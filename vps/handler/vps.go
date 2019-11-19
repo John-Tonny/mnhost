@@ -297,7 +297,6 @@ func (e *Vps) processNewNode(orderId int64) error {
 			vpsInfo, err = newVps("ami-0b0426f6bc13cbfe4", "us-east-2", "", test_volume_size, nvpsInfo)
 			if err != nil {
 				time.Sleep(5 * time.Second)
-				continue
 			}
 			nvpsInfo.allocationId = vpsInfo.allocationId
 			nvpsInfo.allocationState = vpsInfo.allocationState
@@ -387,7 +386,7 @@ func (e *Vps) processNewNode(orderId int64) error {
 	}
 
 	e.pubMsg(userId, topic_newnode_success, orderId)
-	log.Printf("process new node %v\n", orderId)
+	log.Printf("success process new node %v\n", orderId)
 	return nil
 }
 
@@ -633,7 +632,6 @@ func newVps(imageId, zone, instanceType string, volumeSize int64, nvpsInfo VpsIn
 		ipPermissions := GetIpPermission()
 		securityGroupId, err = c.CreateSecurityGroups(group_desc, group_desc, ipPermissions)
 		if err != nil {
-			log.Print("error***1")
 			return &vpsInfo, err
 		}
 	} else {
@@ -728,13 +726,13 @@ func newVps(imageId, zone, instanceType string, volumeSize int64, nvpsInfo VpsIn
 			return &vpsInfo, err
 		}
 	}
+	vpsInfo.volumeState = true
 
 	err = VolumeMount(vpsInfo.publicIp, ssh_password)
 	if err != nil {
 		return &vpsInfo, err
 	}
 
-	vpsInfo.volumeState = true
 	log.Println("new vps success")
 
 	return &vpsInfo, nil
@@ -827,6 +825,12 @@ func newNode(vpsId int, coinName string, ipAddress string, password string) erro
 		}
 
 		cmd = "docker load  --input /tmp/vpub-vircle-0.1.tar"
+		rsp, err = sshCmd(client, cmd, 5)
+		if err != nil {
+			return err
+		}
+
+		cmd = "rm -rf /tmp/vpub-vircle-0.1.tar"
 		rsp, err = sshCmd(client, cmd, 5)
 		if err != nil {
 			return err
@@ -990,7 +994,8 @@ func VolumeMount(ipAddress, password string) error {
 		return err
 	}
 
-	cmd = fmt.Sprintf("file -s %s |grep %s", device_name1, device_name1)
+	cmd = fmt.Sprintf("file -s /dev/%s |grep ext4", device_name1)
+	log.Printf("cmd:%s\n", cmd)
 	result, err = client.Execute(cmd)
 	if err != nil {
 		cmd = fmt.Sprintf("mkfs -t ext4 /dev/%s", device_name1)
@@ -1000,7 +1005,20 @@ func VolumeMount(ipAddress, password string) error {
 		}
 	}
 
+	cmd = fmt.Sprintf("mkdir -p %s", mount_point)
+	result, err = client.Execute(cmd)
+	if err != nil {
+		return err
+	}
+
 	cmd = fmt.Sprintf("mount /dev/%s %s", device_name1, mount_point)
+	result, err = client.Execute(cmd)
+	if err != nil {
+		return err
+	}
+
+	cmd = fmt.Sprintf("df -h |grep %s", device_name1)
+	log.Printf("cmd:%s\n", cmd)
 	result, err = client.Execute(cmd)
 	if err != nil {
 		return err

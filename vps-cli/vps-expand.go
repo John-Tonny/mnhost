@@ -29,7 +29,7 @@ func main() {
 	client := pb.NewVpsService(serviceName, srv.Client())
 
 	resp, err := client.ExpandVolume(context.Background(), &pb.VolumeRequest{
-		VolumeId: "vol-075ea560175a5026f",
+		VolumeId: "vol-0f9c495f7424348ee",
 		Size:     2,
 	})
 	if err != nil {
