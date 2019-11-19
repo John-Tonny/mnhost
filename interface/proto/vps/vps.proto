@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package vps;
+
+service Vps {
+	rpc NewNode(Request) returns (Response) {}
+	rpc DelNode(Request) returns (Response) {}
+	rpc ExpandVolume(VolumeRequest) returns (Response) {}	
+}
+	
+message Request {
+	int64 id = 2;
+}
+
+message VolumeRequest {
+	string volumeId = 1;
+	int64 size = 2;
+}
+
+
+message Response {
+	string errno = 1;
+	string errmsg = 2;
+	bytes mix = 3;	
+}
+
+

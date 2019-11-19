@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package mnmsg;
+
+message MnMsg {
+	int64 id = 1;
+}
+
+message MnErrMsg {
+    string origin = 1;
+    string method = 2;
+    string errno = 3;
+    string errmsg = 4;
+    string msg = 5;
+}
+

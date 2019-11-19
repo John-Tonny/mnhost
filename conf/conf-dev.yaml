@@ -1,0 +1,63 @@
+Env: dev
+ServiceName:
+  log: go.mnhosted.log
+  mnmsg: go.mnhosted.nodemsg
+  api: go.mnhosted.api
+  user: go.mnhosted.user
+  vps: go.mnhosted.vps
+Version:
+  mnmsg: latest
+  log: latest
+  api: latest
+  user: latest
+  vps: latest
+Tracing:
+  log: 127.0.0.1:6831
+  mnmsg: 127.0.0.1:6831
+  api: 127.0.0.1:6831
+  user: 127.0.0.1:6831
+  vps: 127.0.0.1:6831
+DB:
+  order:
+    DriverName: mongodb
+    DBName: go3micro
+    Host: 127.0.0.1
+    Port: 27017
+  user:
+    DriverName: mysql
+    DBName: go3micro
+    Host: 127.0.0.1
+    Port: 3306
+  vps:
+    DriverName: mysql
+    DBName: go3micro
+    Host: 127.0.0.1
+    Port: 3306
+BrokerTopic:
+  log: Vircle.Mnhost.log
+BrokerAddrs:
+  default:
+    - 127.0.0.1:9092
+  log:
+    - 127.0.0.1:9092
+  mnmsg:
+    - 127.0.0.1:9092    
+  api:
+    - 127.0.0.1:9092
+  user:
+    - 127.0.0.1:9092
+  vps:
+    - 127.0.0.1:9092
+RegistryAddrs:
+  default:
+    - 127.0.0.1:8500
+  log:
+    - 127.0.0.1:8500
+  mnmsg:
+    - 127.0.0.1:8500
+  api:
+    - 127.0.0.1:8500
+  user:
+    - 127.0.0.1:8500
+  vps:
+    - 127.0.0.1:8500
