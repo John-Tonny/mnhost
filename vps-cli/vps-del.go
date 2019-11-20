@@ -29,7 +29,7 @@ func main() {
 	client := pb.NewVpsService(serviceName, srv.Client())
 
 	resp, err := client.DelNode(context.Background(), &pb.Request{
-		Id: 10,
+		Id: 14,
 	})
 	if err != nil {
 		log.Printf("del node error: %v", err)

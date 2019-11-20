@@ -6,49 +6,48 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/John-Tonny/mnhost/api/user/handler"
+	"github.com/John-Tonny/mnhost/api/vps/handler"
 	"github.com/micro/go-micro/web"
 
-	"github.com/John-Tonny/mnhost/api/user/middleware"
 	"github.com/John-Tonny/mnhost/common"
 	"github.com/John-Tonny/mnhost/conf"
-	userPb "github.com/John-Tonny/mnhost/interface/out/user"
+	vpsPb "github.com/John-Tonny/mnhost/interface/out/vps"
 
 	"github.com/gin-gonic/gin"
 )
 
 const (
-	service     = "apiuser"
-	userService = "user"
+	service    = "apivps"
+	vpsService = "vps"
 )
 
 var (
-	serviceName     string
-	userServiceName string
+	serviceName    string
+	vpsServiceName string
 )
 
 func init() {
 	serviceName = config.GetServiceName(service)
-	userServiceName = config.GetServiceName(userService)
+	vpsServiceName = config.GetServiceName(vpsService)
 }
 
 func main() {
-	srv := common.GetMicroWeb(service, web.Address("0.0.0.0:18888"))
+	srv := common.GetMicroWeb(service, web.Address("0.0.0.0:18889"))
 
-	srvC := common.GetMicroClient(userService)
+	srvC := common.GetMicroClient(vpsService)
 	// 创建 user-service 微服务的客户端
-	userClient := userPb.NewUserService(userServiceName, srvC.Client())
+	vpsClient := vpsPb.NewVpsService(vpsServiceName, srvC.Client())
 
-	userHandler := handler.GetUserHandler(userClient)
+	vpsHandler := handler.GetVpsHandler(vpsClient)
 
 	router := gin.Default()
 	router.Use(Cors())
 
 	v1 := router.Group("/api/v1")
-	v1.Use(middleware.Logger())
-	user := v1.Group("/user")
-	user.POST("/login", userHandler.Login)
-	user.POST("/register", userHandler.Register)
+	user := v1.Group("/vps")
+	user.POST("/getallvps", vpsHandler.GetAllVps)
+	user.POST("/getallnodefromvps", vpsHandler.GetAllNodeFromVps)
+	user.POST("/getallnodefromuser", vpsHandler.GetAllNodeFromUser)
 
 	srv.Handle("/", router)
 	if err := srv.Run(); err != nil {

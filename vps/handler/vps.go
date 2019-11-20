@@ -246,15 +246,15 @@ func (e *Vps) ExpandVolume(ctx context.Context, req *vps.VolumeRequest, rsp *vps
 	qs := o.QueryTable("vps")
 	err := qs.Filter("volumeId", volumeId).One(&vps)
 	if err != nil {
-		rsp.Errno = utils.RECODE_NODATA
+		rsp.Errno = utils.RECODE_QUERYERR
 		rsp.Errmsg = utils.RecodeText(rsp.Errno)
 		return err
 	}
 
 	if size == 0 {
-		rsp.Errno = utils.RECODE_NODATA
+		rsp.Errno = utils.RECODE_DATAERR
 		rsp.Errmsg = utils.RecodeText(rsp.Errno)
-		return err
+		return nil
 	}
 
 	go e.processExpandVolume("", volumeId, size, vps.IpAddress, ssh_password)
@@ -262,6 +262,105 @@ func (e *Vps) ExpandVolume(ctx context.Context, req *vps.VolumeRequest, rsp *vps
 	rsp.Errno = utils.RECODE_OK
 	rsp.Errmsg = utils.RecodeText(rsp.Errno)
 	log.Println("success expand volume request")
+	return nil
+}
+
+func (e *Vps) GetAllVps(ctx context.Context, req *vps.Request, rsp *vps.VpsResponse) error {
+	log.Printf("get all vps")
+
+	var vpss []models.Vps
+	o := orm.NewOrm()
+	qs := o.QueryTable("vps")
+	nums, err := qs.All(&vpss)
+	if err != nil {
+		rsp.Errno = utils.RECODE_QUERYERR
+		rsp.Errmsg = utils.RecodeText(rsp.Errno)
+		return err
+	}
+	if nums == 0 {
+		rsp.Errno = utils.RECODE_NODATA
+		rsp.Errmsg = utils.RecodeText(rsp.Errno)
+		return nil
+	}
+
+	pbVpss := make([]*vps.MVps, len(vpss))
+	for i, vps := range vpss {
+		pbVps := Vps2PBVps(&vps)
+		pbVpss[i] = &pbVps
+	}
+
+	rsp.Vpss = pbVpss
+
+	rsp.Errno = utils.RECODE_OK
+	rsp.Errmsg = utils.RecodeText(rsp.Errno)
+
+	log.Printf("success get all vps")
+	return nil
+}
+
+func (e *Vps) GetAllNodeFromVps(ctx context.Context, req *vps.Request, rsp *vps.NodeResponse) error {
+	vpsId := req.Id
+	log.Printf("get all node from vpsId: %d\n", vpsId)
+	var nodes []models.Node
+	o := orm.NewOrm()
+	qs := o.QueryTable("node")
+	nums, err := qs.Filter("vps_id", vpsId).All(&nodes)
+	if err != nil {
+		rsp.Errno = utils.RECODE_QUERYERR
+		rsp.Errmsg = utils.RecodeText(rsp.Errno)
+		return err
+	}
+	if nums == 0 {
+		rsp.Errno = utils.RECODE_NODATA
+		rsp.Errmsg = utils.RecodeText(rsp.Errno)
+		return nil
+	}
+
+	pbNodes := make([]*vps.Node, len(nodes))
+	for i, node := range nodes {
+		pbNode := Node2PBNode(&node)
+		pbNodes[i] = &pbNode
+	}
+
+	rsp.Nodes = pbNodes
+
+	rsp.Errno = utils.RECODE_OK
+	rsp.Errmsg = utils.RecodeText(rsp.Errno)
+	log.Printf("success get all node from vpsId: %d\n", vpsId)
+	return nil
+}
+
+func (e *Vps) GetAllNodeFromUser(ctx context.Context, req *vps.Request, rsp *vps.NodeResponse) error {
+	userId := req.Id
+	log.Printf("get all node from userId: %d\n", userId)
+
+	var nodes []models.Node
+	o := orm.NewOrm()
+	qs := o.QueryTable("node")
+	nums, err := qs.Filter("user_id", userId).All(&nodes)
+	if err != nil {
+		rsp.Errno = utils.RECODE_QUERYERR
+		rsp.Errmsg = utils.RecodeText(rsp.Errno)
+		return err
+	}
+	if nums == 0 {
+		rsp.Errno = utils.RECODE_NODATA
+		rsp.Errmsg = utils.RecodeText(rsp.Errno)
+		return nil
+	}
+
+	pbNodes := make([]*vps.Node, len(nodes))
+	for i, node := range nodes {
+		pbNode := Node2PBNode(&node)
+		pbNodes[i] = &pbNode
+	}
+
+	rsp.Nodes = pbNodes
+
+	rsp.Errno = utils.RECODE_OK
+	rsp.Errmsg = utils.RecodeText(rsp.Errno)
+
+	log.Printf("success get all node from userId: %d\n", userId)
 	return nil
 }
 
@@ -984,11 +1083,13 @@ func VolumeMount(ipAddress, password string) error {
 
 	cmd = fmt.Sprintf("echo -e \"n\np\n1\n\n\nw\" | fdisk /dev/%s", device_name)
 	result, err = client.Execute(cmd)
+	log.Printf("cmd:%s\n", cmd)
 	if err != nil {
 		return err
 	}
 
 	cmd = fmt.Sprintf("fdisk -l |grep %s", device_name)
+	log.Printf("cmd:%s\n", cmd)
 	result, err = client.Execute(cmd)
 	if err != nil {
 		return err
@@ -1006,12 +1107,14 @@ func VolumeMount(ipAddress, password string) error {
 	}
 
 	cmd = fmt.Sprintf("mkdir -p %s", mount_point)
+	log.Printf("cmd:%s\n", cmd)
 	result, err = client.Execute(cmd)
 	if err != nil {
 		return err
 	}
 
 	cmd = fmt.Sprintf("mount /dev/%s %s", device_name1, mount_point)
+	log.Printf("cmd:%s\n", cmd)
 	result, err = client.Execute(cmd)
 	if err != nil {
 		return err
@@ -1026,4 +1129,33 @@ func VolumeMount(ipAddress, password string) error {
 
 	log.Println("success mount ", result)
 	return nil
+}
+
+func Vps2PBVps(u *models.Vps) vps.MVps {
+	return vps.MVps{
+		Id:                strconv.Itoa(u.Id),
+		ProviderName:      u.ProviderName,
+		Cores:             strconv.Itoa(u.Cores),
+		Memory:            strconv.Itoa(u.Memory),
+		MaxNodes:          strconv.Itoa(u.MaxNodes),
+		UsableNodes:       strconv.Itoa(u.UsableNodes),
+		RegionName:        u.RegionName,
+		InstanceId:        u.InstanceId,
+		VolumeId:          u.VolumeId,
+		SecurityGroupName: u.SecurityGroupName,
+		KeyPairName:       u.KeyPairName,
+		AllocateId:        u.AllocateId,
+		IpAddress:         u.IpAddress,
+	}
+}
+
+func Node2PBNode(u *models.Node) vps.Node {
+	return vps.Node{
+		Id:       strconv.Itoa(u.Id),
+		UserId:   strconv.Itoa(u.User.Id),
+		VpsId:    strconv.Itoa(u.Vps.Id),
+		OrderId:  strconv.Itoa(u.OrderNode.Id),
+		CoinName: u.CoinName,
+		Port:     strconv.Itoa(u.Port),
+	}
 }

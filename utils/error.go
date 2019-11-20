@@ -27,6 +27,7 @@ const (
 	RECODE_INSERTERR = "4503"
 	RECODE_DELETEERR = "4504"
 	RECORD_SYSTEMERR = "4505"
+	RECODE_QUERYERR  = "4506"
 
 	INTER_ERROR = "8000"
 
@@ -65,6 +66,7 @@ var recodeText = map[string]string{
 	RECODE_INSERTERR:  "插入失败",
 	RECODE_DELETEERR:  "删除失败",
 	RECORD_SYSTEMERR:  "系统错误",
+	RECODE_QUERYERR:   "查询失败",
 
 	INTER_ERROR:            "内部错误",
 	JSON_DATAERR:           "数据错误",

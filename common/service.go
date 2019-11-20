@@ -45,6 +45,8 @@ var (
 )
 
 func init() {
+	//log.SetFlags(log.Ldate | log.Ltime | log.Llongfile) //日期 时间 文件绝对路径和行号
+	log.SetFlags(log.Llongfile) //日期 时间 文件绝对路径和行号
 	defaultOpts = []micro.Option{
 		micro.RegisterTTL(time.Second * 30),
 		micro.RegisterInterval(time.Second * 20),

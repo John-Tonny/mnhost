@@ -37,6 +37,9 @@ type VpsService interface {
 	NewNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error)
 	DelNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error)
 	ExpandVolume(ctx context.Context, in *VolumeRequest, opts ...client.CallOption) (*Response, error)
+	GetAllVps(ctx context.Context, in *Request, opts ...client.CallOption) (*VpsResponse, error)
+	GetAllNodeFromVps(ctx context.Context, in *Request, opts ...client.CallOption) (*NodeResponse, error)
+	GetAllNodeFromUser(ctx context.Context, in *Request, opts ...client.CallOption) (*NodeResponse, error)
 }
 
 type vpsService struct {
@@ -87,12 +90,45 @@ func (c *vpsService) ExpandVolume(ctx context.Context, in *VolumeRequest, opts .
 	return out, nil
 }
 
+func (c *vpsService) GetAllVps(ctx context.Context, in *Request, opts ...client.CallOption) (*VpsResponse, error) {
+	req := c.c.NewRequest(c.name, "Vps.GetAllVps", in)
+	out := new(VpsResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *vpsService) GetAllNodeFromVps(ctx context.Context, in *Request, opts ...client.CallOption) (*NodeResponse, error) {
+	req := c.c.NewRequest(c.name, "Vps.GetAllNodeFromVps", in)
+	out := new(NodeResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *vpsService) GetAllNodeFromUser(ctx context.Context, in *Request, opts ...client.CallOption) (*NodeResponse, error) {
+	req := c.c.NewRequest(c.name, "Vps.GetAllNodeFromUser", in)
+	out := new(NodeResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for Vps service
 
 type VpsHandler interface {
 	NewNode(context.Context, *Request, *Response) error
 	DelNode(context.Context, *Request, *Response) error
 	ExpandVolume(context.Context, *VolumeRequest, *Response) error
+	GetAllVps(context.Context, *Request, *VpsResponse) error
+	GetAllNodeFromVps(context.Context, *Request, *NodeResponse) error
+	GetAllNodeFromUser(context.Context, *Request, *NodeResponse) error
 }
 
 func RegisterVpsHandler(s server.Server, hdlr VpsHandler, opts ...server.HandlerOption) error {
@@ -100,6 +136,9 @@ func RegisterVpsHandler(s server.Server, hdlr VpsHandler, opts ...server.Handler
 		NewNode(ctx context.Context, in *Request, out *Response) error
 		DelNode(ctx context.Context, in *Request, out *Response) error
 		ExpandVolume(ctx context.Context, in *VolumeRequest, out *Response) error
+		GetAllVps(ctx context.Context, in *Request, out *VpsResponse) error
+		GetAllNodeFromVps(ctx context.Context, in *Request, out *NodeResponse) error
+		GetAllNodeFromUser(ctx context.Context, in *Request, out *NodeResponse) error
 	}
 	type Vps struct {
 		vps
@@ -122,4 +161,16 @@ func (h *vpsHandler) DelNode(ctx context.Context, in *Request, out *Response) er
 
 func (h *vpsHandler) ExpandVolume(ctx context.Context, in *VolumeRequest, out *Response) error {
 	return h.VpsHandler.ExpandVolume(ctx, in, out)
+}
+
+func (h *vpsHandler) GetAllVps(ctx context.Context, in *Request, out *VpsResponse) error {
+	return h.VpsHandler.GetAllVps(ctx, in, out)
+}
+
+func (h *vpsHandler) GetAllNodeFromVps(ctx context.Context, in *Request, out *NodeResponse) error {
+	return h.VpsHandler.GetAllNodeFromVps(ctx, in, out)
+}
+
+func (h *vpsHandler) GetAllNodeFromUser(ctx context.Context, in *Request, out *NodeResponse) error {
+	return h.VpsHandler.GetAllNodeFromUser(ctx, in, out)
 }

@@ -2,19 +2,22 @@ Env: dev
 ServiceName:
   log: go.mnhosted.log
   mnmsg: go.mnhosted.nodemsg
-  api: go.mnhosted.api
+  apiuser: go.mnhosted.api.user
+  apivps: go.mnhosted.api.vps
   user: go.mnhosted.user
   vps: go.mnhosted.vps
 Version:
   mnmsg: latest
   log: latest
-  api: latest
+  apiuser: latest
+  apivps: latest
   user: latest
   vps: latest
 Tracing:
   log: 127.0.0.1:6831
   mnmsg: 127.0.0.1:6831
-  api: 127.0.0.1:6831
+  apiuser: 127.0.0.1:6831
+  apivps: 127.0.0.1:6831
   user: 127.0.0.1:6831
   vps: 127.0.0.1:6831
 DB:

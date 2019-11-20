@@ -220,7 +220,7 @@ func nodeDelSuccess(pub broker.Event) error {
 	}
 	userId := pub.Message().Header["user_id"]
 	nodeId := (*msg).Id
-	log.Printf("del node success finish, userId:%v,orderId:%v\n", userId, nodeId)
+	log.Printf("del node success finish, userId:%v,nodeId:%v\n", userId, nodeId)
 	return nil
 }
 

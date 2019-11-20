@@ -6,8 +6,37 @@ service Vps {
 	rpc NewNode(Request) returns (Response) {}
 	rpc DelNode(Request) returns (Response) {}
 	rpc ExpandVolume(VolumeRequest) returns (Response) {}	
+	rpc GetAllVps(Request) returns (VpsResponse) {}
+	rpc GetAllNodeFromVps(Request) returns (NodeResponse) {}
+	rpc GetAllNodeFromUser(Request) returns (NodeResponse) {}
 }
-	
+
+// 用户信息
+message MVps {
+    string id = 1;
+    string providerName = 2;
+    string cores = 3;
+    string memory = 4;
+    string maxNodes = 5;
+    string usableNodes = 6;
+    	string regionName = 7;
+	string instanceId = 8;
+	string volumeId = 9;
+	string securityGroupName = 10;
+	string keyPairName = 11;
+	string allocateId = 12;
+	string ipAddress = 13;
+}
+
+message Node {
+	string id = 1;
+	string userId = 2;
+	string vpsId = 3;
+	string orderId = 4;
+	string coinName = 5;
+	string port = 6;
+}
+
 message Request {
 	int64 id = 2;
 }
@@ -17,11 +46,22 @@ message VolumeRequest {
 	int64 size = 2;
 }
 
-
 message Response {
 	string errno = 1;
 	string errmsg = 2;
 	bytes mix = 3;	
 }
 
+message VpsResponse {
+	string errno = 1;
+	string errmsg = 2;
+    MVps vps = 3;
+    repeated MVps vpss = 4;
+}
 
+message NodeResponse {
+	string errno = 1;
+	string errmsg = 2;
+    Node node = 3;
+    repeated Node nodes = 4;
+}
