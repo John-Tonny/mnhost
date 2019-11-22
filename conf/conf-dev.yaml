@@ -1,11 +1,11 @@
 Env: dev
 ServiceName:
-  log: go.mnhosted.log
-  mnmsg: go.mnhosted.nodemsg
+  log: go.mnhosted.srv.log
+  mnmsg: go.mnhosted.srv.nodemsg
   apiuser: go.mnhosted.api.user
   apivps: go.mnhosted.api.vps
-  user: go.mnhosted.user
-  vps: go.mnhosted.vps
+  user: go.mnhosted.srv.user
+  vps: go.mnhosted.srv.vps
 Version:
   mnmsg: latest
   log: latest
@@ -22,18 +22,18 @@ Tracing:
   vps: 127.0.0.1:6831
 DB:
   order:
-    DriverName: mongodb
-    DBName: go3micro
+    DriverName: mysql
+    DBName: mnhosted
     Host: 127.0.0.1
     Port: 27017
   user:
     DriverName: mysql
-    DBName: go3micro
+    DBName: mnhosted
     Host: 127.0.0.1
     Port: 3306
   vps:
     DriverName: mysql
-    DBName: go3micro
+    DBName: mnhosted
     Host: 127.0.0.1
     Port: 3306
 BrokerTopic:

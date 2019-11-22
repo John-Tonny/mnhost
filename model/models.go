@@ -17,71 +17,86 @@ import (
 )
 
 /* 用户 table_name = user */
-type User struct {
-	Id            int          `json:"user_id"`                                 //用户编号
-	Name          string       `orm:"null;size(32)"  json:"name"`               //用户昵称
-	Password      string       `orm:"size(128)" json:"password"`                //用户密码加密的
-	Mobile        string       `orm:"size(11);unique" json:"mobile"`            //手机号
-	RealName      string       `orm:"null;size(32)" json:"realName"`            //真实姓名  实名认证
-	IdCard        string       `orm:"null;size(20)" json:"idCard"`              //身份证号  实名认证
-	RewardAddress string       `orm:"null;size(128)" json:"rewardAddress"`      //收益地址
-	Ctime         time.Time    `orm:"auto_now_add;type(datetime)" json:"ctime"` //创建时间
-	Utime         time.Time    `orm:"auto_now;type(datetime)" json:"utime"`     //更新时间
-	Orders        []*OrderNode `orm:"reverse(many)" json:"orders"`              //用户下的订单  一个人多次订单
+type TAccount struct {
+	Id            int64     `orm:"size(20)" json:"account_id"`                    //用户编号
+	Account       string    `orm:"size(255);unique" json:"account"`               //用户昵称
+	Passwd        string    `orm:"size(255)" json:"passwd"`                       //用户密码加密的
+	Walletaddress string    `orm:"size(128)" json:"walletaddress`                 //手机号
+	Createtime    time.Time `orm:"auto_now_add;type(datetime)" json:"createtime"` //创建时间
+	Updatetime    time.Time `orm:"auto_now;type(datetime)" json:"updatetime"`     //更新时间
+	//Orders        []*TOrder `orm:"reverse(many)" json:"orders"`                   //用户下的订单  一个人多次订单
 }
 
 /* 云主机 table_name = Vps */
-type Vps struct {
-	Id                int       `json:"vps_id"`                                  //主机编号
-	ProviderName      string    `orm:"size(32)" json:"title"`                    //主机服务商名称
-	Cores             int       `orm:"default(2)" json:"cpus"`                   //核数量
-	Memory            int       `orm:"default(4)" json:"memorys"`                //内存
-	MaxNodes          int       `orm:"default(15)" json:maxnodes`                //
-	UsableNodes       int       `orm:"default(15)" json:usablenodes`             //
-	RegionName        string    `orm:"size(64)" json:"regionName"`               //区域
-	InstanceId        string    `orm:"size(64);unique" json:"instanceid"`        //实例ID
-	VolumeId          string    `orm:"size(64)" json:"VolumeId"`                 //磁盘ID
-	SecurityGroupName string    `orm:"size(64)" json:"securitygroupId"`          //安全组名称
-	KeyPairName       string    `orm:"size(64)" json:"KeyPairName"`              //密钥名称
-	AllocateId        string    `orm:"size(64)" json:"AllocateId"`               //主机IP
-	IpAddress         string    `orm:"size(64)" json:"AllocateId"`               //主机IP
-	Ctime             time.Time `orm:"auto_now_add;type(datetime)" json:"ctime"` //创建时间
-	Utime             time.Time `orm:"auto_now;type(datetime)" json:"utime"`     //更新时间
-	Nodes             []*Node   `orm:"reverse(many)" json:"nodes"`               //用户下的订单       一个人多次订单
+type TVps struct {
+	Id                int64     `orm:"size(20)" json:"vps_id"`                        //主机编号
+	ProviderName      string    `orm:"size(32)" json:"provider_name"`                 //主机服务商名称
+	Cores             int       `orm:"default(2)" json:"cpus"`                        //核数量
+	Memory            int       `orm:"default(4)" json:"memory"`                      //内存
+	MaxNodes          int       `orm:"default(15)" json:max_nodes`                    //最大节点数
+	UsableNodes       int       `orm:"default(15)" json:usable_nodes`                 //可用节点数
+	RegionName        string    `orm:"size(64)" json:"region_name"`                   //区域
+	InstanceId        string    `orm:"size(64);unique" json:"instance_id"`            //实例ID
+	VolumeId          string    `orm:"size(64)" json:"volume_id"`                     //磁盘ID
+	SecurityGroupName string    `orm:"size(64)" json:"security_group_name"`           //安全组名称
+	KeyPairName       string    `orm:"size(64)" json:"key_pair_name"`                 //密钥名称
+	AllocateId        string    `orm:"size(64)" json:"allocate_id"`                   //分配地址id
+	IpAddress         string    `orm:"size(64)" json:"ip_address"`                    //主机IP
+	Createtime        time.Time `orm:"auto_now_add;type(datetime)" json:"createtime"` //创建时间
+	Updatetime        time.Time `orm:"auto_now;type(datetime)" json:"updatetime"`     //更新时间
+	Nodes             []*TNode  `orm:"reverse(many)" json:"nodes"`                    //用户创建的节点
 }
 
-/* 房屋信息 table_name = Node */
-type Node struct {
-	Id        int        `json:"node_id"`                //节点编号
-	User      *User      `orm:"rel(fk)" json:"user_id"`  //用户编号  	与用户进行关联
-	Vps       *Vps       `orm:"rel(fk)" json:"vps_id"`   //主机编号		与主机表进行关联
-	OrderNode *OrderNode `orm:"rel(fk)" json:"order_id"` //主机编号		与主机表进行关联
-	CoinName  string     `orm:"size(32)" json:"coin"`    //币名称
-	Port      int        //端口号
-	Ctime     time.Time  `orm:"auto_now_add;type(datetime)" json:"ctime"` //创建时间
-	Utime     time.Time  `orm:"auto_now;type(datetime)" json:"utime"`     //更新时间
+/* 信息 table_name = Node */
+type TNode struct {
+	Id     int64 `orm:"size(20)" json:"node_id"` //节点编号
+	Userid int64 `json:"userid"`
+	//User     		*TAccount 	`orm:"rel(fk)" json:"user_id"`   						//用户编号  	与用户进行关联
+	Vps        *TVps     `orm:"rel(fk)" json:"vps_id"`                         //主机编号		与主机表进行关联
+	Order      *TOrder   `orm:"rel(fk)" json:"order_id"`                       //订单编号		与订单表进行关联
+	CoinName   string    `orm:"size(32)" json:"coin_name"`                     //币名称
+	Port       int       `json:"port"`                                         //rpc端口号
+	Createtime time.Time `orm:"auto_now_add;type(datetime)" json:"createtime"` //创建时间
+	Updatetime time.Time `orm:"auto_now;type(datetime)" json:"updatetime"`     //更新时间
 }
 
 /* 云主机 table_name = Coin */
-type Coin struct {
-	Id     int       `json:"coin_id"`                                 //币编号
-	Name   string    `orm:"size(32);unique" json:"name"`              //币名称
-	Path   string    `orm:"size(32);unique" json:"path"`              //币名称
-	Conf   string    `orm:"size(32);unique" json:"conf"`              //币名称
-	Docker string    `orm:"size(32);unique" json:"version"`           //币名称
-	Status string    `orm:"default(Enabled)"`                         //状态
-	Ctime  time.Time `orm:"auto_now_add;type(datetime)" json:"ctime"` //创建时间
-	Utime  time.Time `orm:"auto_now;type(datetime)" json:"utime"`     //更新时间
+type TCoin struct {
+	Id         int64     `orm:"size(20)" json:"coin_id"`                       //币编号
+	Name       string    `orm:"size(32);unique" json:"name"`                   //币名称
+	Path       string    `orm:"size(32);unique" json:"path"`                   //节点缺省安装路径
+	Conf       string    `orm:"size(32);unique" json:"conf"`                   //节点缺省配置文件名称
+	FilePath   string    `orm:"size(128);unique" json:"file_path"`             //上传节点docker文件的路径
+	Docker     string    `orm:"size(32);unique" json:"docker"`                 //主节点docker名称
+	Status     string    `orm:"default(Enabled)" json:"staus"`                 //状态
+	Createtime time.Time `orm:"auto_now_add;type(datetime)" json:"createtime"` //创建时间
+	Updatetime time.Time `orm:"auto_now;type(datetime)" json:"updatetime"`     //更新时间
 }
 
 /* 产品 table_name = Product */
-type Product struct {
-	Id     int       `json:"product_id"`                   //产品编号
-	Name   string    `orm:"size(32)" json:"title"`         //产品名称
-	Period string    `orm:"size(32);unique" json:"period"` //服务的周期（天、月、半年、一年、三年）
-	Amount int       //总金额
-	Ctime  time.Time `orm:"auto_now_add;type(datetime)" json:"ctime"` //创建时间
-	Utime  time.Time `orm:"auto_now;type(datetime)" json:"utime"`     //更新时间
+type TProduct struct {
+	Id         int64     `orm:"size(20)" json:"product_id"`                    //产品编号
+	Name       string    `orm:"size(32)" json:"title"`                         //产品名称
+	Period     string    `orm:"size(32);unique" json:"period"`                 //服务的周期（天、月、半年、一年、三年）
+	Amount     int       `json:amount`                                         //总金额
+	Createtime time.Time `orm:"auto_now_add;type(datetime)" json:"createtime"` //创建时间
+	Updatetime time.Time `orm:"auto_now;type(datetime)" json:"updatetime"`     //更新时间
+}
+
+/* 订单 table_name = order_node */
+type TOrder struct {
+	Id     int64 `orm:"size(20)" json:"order_id"` //订单编号
+	Userid int64 `json:"userid"`                  //用户编号
+	//User       	*TAccount 	`orm:"rel(fk)" json:"userid"`    			//下单的用户编号   	//与用户表进行关联
+	Coinname   string    `orm:"size(32)" json:"coinname"`                      //
+	Mnkey      string    `orm:"size(64)" json:"mnkey"`                         //别名
+	Timetype   int8      `json:"timetype"`                                     //
+	Price      int       `json:"price"`                                        //交易ID
+	Txid       string    `json:"txid"`                                         //收益地址
+	Isrenew    int       `json:"isnew"`                                        //交易ID
+	Status     int       `json:"status"`                                       //交易ID
+	Createtime time.Time `orm:"auto_now_add;type(datetime)" json:"createtime"` //创建时间
+	Updatetime time.Time `orm:"auto_now;type(datetime)" json:"updatetime"`     //更新时间
 }
 
 const (
@@ -91,24 +106,6 @@ const (
 	ORDER_STATUS_CANCELED     = "CANCELED"     //已取消
 	ORDER_STATUS_EXPIRED      = "EXPIRED"      //已过期
 )
-
-/* 订单 table_name = order_node */
-type OrderNode struct {
-	Id            int       `json:"order_id"`              //订单编号
-	User          *User     `orm:"rel(fk)" json:"user_id"` //下单的用户编号   	//与用户表进行关联
-	CoinName      string    `orm:"size(32)" json:"coin"`   //
-	Alias         string    `orm:"size(32)" json:"alias"`  //别名
-	Txid          string    `orm:"size(64)" json:"txid"`   //交易ID
-	OutputIndex   int       //交易index
-	RewardAddress string    `orm:"size(64)" json:"rewardaddress"` //收益地址
-	Begin_date    time.Time `orm:"type(datetime)"`                //服务的起始时间
-	End_date      time.Time `orm:"type(datetime)"`                //服务的结束时间
-	Period        string    //服务的周期（天、月、半年、一年、三年）
-	Amount        int       //订单总金额
-	Status        string    `orm:"default(WAIT_PAYMENT)"`                    //订单状态
-	Ctime         time.Time `orm:"auto_now_add;type(datetime)" json:"ctime"` //创建时间
-	Utime         time.Time `orm:"auto_now;type(datetime)" json:"utime"`     //更新时间
-}
 
 //数据库的初始化
 func init() {
@@ -124,7 +121,7 @@ func init() {
 	orm.RegisterDataBase("default", "mysql", dburl, 30)
 
 	//注册model 建表
-	orm.RegisterModel(new(User), new(Vps), new(Node), new(Coin), new(Product), new(OrderNode))
+	orm.RegisterModel(new(TAccount), new(TVps), new(TNode), new(TCoin), new(TProduct), new(TOrder))
 
 	// create table
 	//第一个是别名

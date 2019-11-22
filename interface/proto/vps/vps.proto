@@ -9,6 +9,8 @@ service Vps {
 	rpc GetAllVps(Request) returns (VpsResponse) {}
 	rpc GetAllNodeFromVps(Request) returns (NodeResponse) {}
 	rpc GetAllNodeFromUser(Request) returns (NodeResponse) {}
+	
+	rpc RestartNode(Request) returns (Response) {}	
 }
 
 // 用户信息

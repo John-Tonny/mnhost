@@ -32,6 +32,11 @@ const topic_delnode_fail = "Vircle.Mnhost.Topic.NodeDel.Fail"
 const topic_delnode_start = "Vircle.Mnhost.Topic.NodeDel.Start"
 const topic_delnode_stop = "Vircle.Mnhost.Topic.NodeDel.Stop"
 
+const topic_expandvolume_success = "Vircle.Mnhost.Topic.ExpandVolume.Success"
+const topic_expandvolume_fail = "Vircle.Mnhost.Topic.ExpandVolume.Fail"
+const topic_expandvolume_start = "Vircle.Mnhost.Topic.ExpandVolume.Start"
+const topic_expandvolume_stop = "Vircle.Mnhost.Topic.ExpandVolume.Stop"
+
 var (
 	topic        string
 	cserviceName string
@@ -90,6 +95,26 @@ func main() {
 	}
 
 	_, err = bk.Subscribe(topic_delnode_stop, nodeDelStop)
+	if err != nil {
+		log.Fatalf("del node stop error: %v\n", err)
+	}
+
+	_, err = bk.Subscribe(topic_expandvolume_start, expandVolumeStart)
+	if err != nil {
+		log.Fatalf("del node success error: %v\n", err)
+	}
+
+	_, err = bk.Subscribe(topic_expandvolume_success, expandVolumeSuccess)
+	if err != nil {
+		log.Fatalf("del node success error: %v\n", err)
+	}
+
+	_, err = bk.Subscribe(topic_expandvolume_success, expandVolumeFail)
+	if err != nil {
+		log.Fatalf("del node fail error: %v\n", err)
+	}
+
+	_, err = bk.Subscribe(topic_expandvolume_stop, expandVolumeStop)
 	if err != nil {
 		log.Fatalf("del node stop error: %v\n", err)
 	}
@@ -244,6 +269,45 @@ func nodeDelStop(pub broker.Event) error {
 
 	userId := pub.Message().Header["user_id"]
 	log.Printf("del nodestop finish, userId:%v\n", userId)
+	return nil
+}
+
+func expandVolumeStart(pub broker.Event) error {
+	log.Println("expandVolumeStart start")
+
+	log.Println("expandVolumeStart finish")
+	return nil
+}
+
+func expandVolumeSuccess(pub broker.Event) error {
+	log.Println("expandVolumeSuccess")
+	var msg *mnPB.MnMsg
+	if err := json.Unmarshal(pub.Message().Body, &msg); err != nil {
+		return err
+	}
+	userId := pub.Message().Header["user_id"]
+	log.Printf("expandVolumeSuccess finish, userId:%v\n", userId)
+	return nil
+}
+
+func expandVolumeFail(pub broker.Event) error {
+	log.Printf("expandVolumeFail start")
+	var msg *mnPB.MnErrMsg
+	if err := json.Unmarshal(pub.Message().Body, &msg); err != nil {
+		return err
+	}
+	userId := pub.Message().Header["user_id"]
+	log.Printf("expandVolumeFail finish, userId:%v\n", userId)
+	return nil
+}
+
+func expandVolumeStop(pub broker.Event) error {
+	log.Printf("expandVolumeStop start")
+	var msg *mnPB.MnMsg
+	if err := json.Unmarshal(pub.Message().Body, &msg); err != nil {
+		return err
+	}
+	log.Println("expandVolumetop finish")
 	return nil
 }
 

@@ -40,6 +40,7 @@ type VpsService interface {
 	GetAllVps(ctx context.Context, in *Request, opts ...client.CallOption) (*VpsResponse, error)
 	GetAllNodeFromVps(ctx context.Context, in *Request, opts ...client.CallOption) (*NodeResponse, error)
 	GetAllNodeFromUser(ctx context.Context, in *Request, opts ...client.CallOption) (*NodeResponse, error)
+	RestartNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error)
 }
 
 type vpsService struct {
@@ -120,6 +121,16 @@ func (c *vpsService) GetAllNodeFromUser(ctx context.Context, in *Request, opts .
 	return out, nil
 }
 
+func (c *vpsService) RestartNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error) {
+	req := c.c.NewRequest(c.name, "Vps.RestartNode", in)
+	out := new(Response)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for Vps service
 
 type VpsHandler interface {
@@ -129,6 +140,7 @@ type VpsHandler interface {
 	GetAllVps(context.Context, *Request, *VpsResponse) error
 	GetAllNodeFromVps(context.Context, *Request, *NodeResponse) error
 	GetAllNodeFromUser(context.Context, *Request, *NodeResponse) error
+	RestartNode(context.Context, *Request, *Response) error
 }
 
 func RegisterVpsHandler(s server.Server, hdlr VpsHandler, opts ...server.HandlerOption) error {
@@ -139,6 +151,7 @@ func RegisterVpsHandler(s server.Server, hdlr VpsHandler, opts ...server.Handler
 		GetAllVps(ctx context.Context, in *Request, out *VpsResponse) error
 		GetAllNodeFromVps(ctx context.Context, in *Request, out *NodeResponse) error
 		GetAllNodeFromUser(ctx context.Context, in *Request, out *NodeResponse) error
+		RestartNode(ctx context.Context, in *Request, out *Response) error
 	}
 	type Vps struct {
 		vps
@@ -173,4 +186,8 @@ func (h *vpsHandler) GetAllNodeFromVps(ctx context.Context, in *Request, out *No
 
 func (h *vpsHandler) GetAllNodeFromUser(ctx context.Context, in *Request, out *NodeResponse) error {
 	return h.VpsHandler.GetAllNodeFromUser(ctx, in, out)
+}
+
+func (h *vpsHandler) RestartNode(ctx context.Context, in *Request, out *Response) error {
+	return h.VpsHandler.RestartNode(ctx, in, out)
 }
