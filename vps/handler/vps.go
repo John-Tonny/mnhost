@@ -268,8 +268,12 @@ func (e *Vps) ExpandVolume(ctx context.Context, req *vps.VolumeRequest, rsp *vps
 
 	go e.processExpandVolume("", volumeId, size, tvps.IpAddress, ssh_password)
 
+	jvps, err := json.Marshal(tvps)
+	rsp.Mix = jvps
+
 	rsp.Errno = utils.RECODE_OK
 	rsp.Errmsg = utils.RecodeText(rsp.Errno)
+
 	log.Println("success expand volume request")
 	return nil
 }
@@ -400,6 +404,19 @@ func (e *Vps) RestartNode(ctx context.Context, req *vps.Request, rsp *vps.Respon
 	}
 
 	go e.processRestartNode(userId, tvps.IpAddress, ssh_password, tnode.Port, nodeId)
+
+	type Rmsg struct {
+		NodeId    string
+		IpAddress string
+		RpcPort   string
+	}
+	msg := Rmsg{
+		NodeId:    strconv.FormatInt(nodeId, 10),
+		IpAddress: tvps.IpAddress,
+		RpcPort:   strconv.Itoa(tnode.Port),
+	}
+	jmsg, err := json.Marshal(msg)
+	rsp.Mix = jmsg
 
 	rsp.Errno = utils.RECODE_OK
 	rsp.Errmsg = utils.RecodeText(rsp.Errno)
@@ -706,16 +723,17 @@ func (e *Vps) processRestartNode(userId, ipAddress, password string, port int, n
 
 	var rsp *gossh.Result
 	cmd := fmt.Sprintf("docker ps -a | grep mn%d | awk  '{print $1}'", port)
-	log.Printf("cmd:%v\n", cmd)
 	rsp, err := sshCmd(client, cmd, 5)
 	if err != nil {
 		e.pubErrMsg(userId, "restartnode", utils.CONNECT_ERR, err.Error(), topic_restartnode_fail)
 		return err
 	}
-	cmd = fmt.Sprintf("docker restart %s", rsp.Stdout())
-	log.Printf("cmd:%v\n", cmd)
-	rsp, err = client.Execute(cmd)
+	containerId := rsp.Stdout()
+	containerId = containerId[:8]
+	cmd = fmt.Sprintf("docker restart %s", containerId)
+	rsp, err = sshCmd(client, cmd, 5)
 	if err != nil {
+		log.Printf("err:%v\n", err)
 		e.pubErrMsg(userId, "restartnode", utils.CONNECT_ERR, err.Error(), topic_restartnode_fail)
 		return err
 	}
@@ -1138,6 +1156,7 @@ func portExist(port int, tnodes *[]models.TNode) bool {
 }
 
 func sshCmd(client *gossh.Client, cmd string, fails int) (*gossh.Result, error) {
+	log.Printf("cmd:%s\n", cmd)
 	retrys := 0
 	for { //循环
 		retrys++
