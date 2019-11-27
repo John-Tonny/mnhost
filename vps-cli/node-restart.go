@@ -29,7 +29,7 @@ func main() {
 	client := pb.NewVpsService(serviceName, srv.Client())
 
 	resp, err := client.RestartNode(context.Background(), &pb.Request{
-		Id: 6,
+		Id: 7,
 	})
 	if err != nil {
 		log.Printf("new node error: %v", err)
