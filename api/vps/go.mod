@@ -29,3 +29,5 @@ replace github.com/John-Tonny/mnhost/utils => /root/mygo/src/github.com/John-Ton
 replace github.com/John-Tonny/mnhost/vps/handler => /root/mygo/src/github.com/John-Tonny/mnhost/vps/handler
 
 replace github.com/John-Tonny/mnhost/interface/out/vps => /root/mygo/src/github.com/John-Tonny/mnhost/interface/out/vps
+
+replace github.com/John-Tonny/mnhost/api/vps/handler => /root/mygo/src/github.com/John-Tonny/mnhost/api/vps/handler

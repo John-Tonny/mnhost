@@ -45,9 +45,13 @@ func main() {
 
 	v1 := router.Group("/api/v1")
 	user := v1.Group("/vps")
-	user.POST("/getallvps", vpsHandler.GetAllVps)
-	user.POST("/getallnodefromvps", vpsHandler.GetAllNodeFromVps)
-	user.POST("/getallnodefromuser", vpsHandler.GetAllNodeFromUser)
+	user.POST("/new", vpsHandler.NewNode)
+	user.POST("/del", vpsHandler.DelNode)
+	user.POST("/expand", vpsHandler.ExpandVolume)
+	user.POST("/restart", vpsHandler.RestartNode)
+	user.POST("/vps", vpsHandler.GetAllVps)
+	user.POST("/nodeofvps", vpsHandler.GetAllNodeFromVps)
+	user.POST("/nodeofuser", vpsHandler.GetAllNodeFromUser)
 
 	srv.Handle("/", router)
 	if err := srv.Run(); err != nil {

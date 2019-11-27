@@ -20,6 +20,94 @@ func GetVpsHandler(vpsClient vpsPb.VpsService) *VpsAPIHandler {
 	}
 }
 
+func (s *VpsAPIHandler) NewNode(c *gin.Context) {
+	log.Printf("start new node")
+	vps := vpsPb.Request{}
+	if err := c.ShouldBindJSON(&vps); err != nil {
+		log.Println(err)
+		c.JSON(http.StatusOK, gin.H{"status": "err", "errmsg": err})
+		//c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	resp, err := s.vpsClient.NewNode(context.Background(), &vps)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"status": "err", "errmsg": err})
+		//c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"Order":  resp,
+		"Errno":  resp.Errno,
+		"Errmsg": resp.Errmsg,
+	})
+}
+
+func (s *VpsAPIHandler) DelNode(c *gin.Context) {
+	log.Printf("start del node")
+	vps := vpsPb.Request{}
+	if err := c.ShouldBindJSON(&vps); err != nil {
+		log.Println(err)
+		c.JSON(http.StatusOK, gin.H{"status": "err", "errmsg": err})
+		//c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	resp, err := s.vpsClient.DelNode(context.Background(), &vps)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"status": "err", "errmsg": err})
+		//c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"Node":   resp,
+		"Errno":  resp.Errno,
+		"Errmsg": resp.Errmsg,
+	})
+}
+
+func (s *VpsAPIHandler) ExpandVolume(c *gin.Context) {
+	log.Printf("start new node")
+	vps := vpsPb.VolumeRequest{}
+	if err := c.ShouldBindJSON(&vps); err != nil {
+		log.Println(err)
+		c.JSON(http.StatusOK, gin.H{"status": "err", "errmsg": err})
+		//c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	resp, err := s.vpsClient.ExpandVolume(context.Background(), &vps)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"status": "err", "errmsg": err})
+		//c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"Vps":    resp,
+		"Errno":  resp.Errno,
+		"Errmsg": resp.Errmsg,
+	})
+}
+
+func (s *VpsAPIHandler) RestartNode(c *gin.Context) {
+	log.Printf("start new node")
+	vps := vpsPb.Request{}
+	if err := c.ShouldBindJSON(&vps); err != nil {
+		log.Println(err)
+		c.JSON(http.StatusOK, gin.H{"status": "err", "errmsg": err})
+		//c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	resp, err := s.vpsClient.RestartNode(context.Background(), &vps)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"status": "err", "errmsg": err})
+		//c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"Result": resp,
+		"Errno":  resp.Errno,
+		"Errmsg": resp.Errmsg,
+	})
+}
+
 func (s *VpsAPIHandler) GetAllVps(c *gin.Context) {
 	log.Printf("start get all vps")
 	vps := vpsPb.Request{}

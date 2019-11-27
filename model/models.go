@@ -10,8 +10,7 @@ import (
 	//time包关于时间信息
 	"time"
 
-	//"log"
-	//"reflect"
+	"log"
 
 	"strconv"
 )
@@ -117,7 +116,10 @@ func init() {
 	host := config.GetDB("user").Host
 	dbname := config.GetDB("user").DBName
 	port := strconv.Itoa(int(config.GetDB("user").Port))
-	dburl := "root:vpub999000@tcp(" + host + ":" + port + ")/" + dbname + "?charset=utf8"
+	user := config.GetDB("user").User
+	pw := config.GetDB("user").PW
+	dburl := user + ":" + pw + "@tcp(" + host + ":" + port + ")/" + dbname + "?charset=utf8"
+	log.Println(dburl)
 	orm.RegisterDataBase("default", "mysql", dburl, 30)
 
 	//注册model 建表

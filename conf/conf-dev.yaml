@@ -26,16 +26,22 @@ DB:
     DBName: mnhosted
     Host: 127.0.0.1
     Port: 27017
+    PW: vpub999000
+    User: root
   user:
     DriverName: mysql
     DBName: mnhosted
     Host: 127.0.0.1
     Port: 3306
+    PW: vpub999000
+    User: root
   vps:
     DriverName: mysql
     DBName: mnhosted
     Host: 127.0.0.1
     Port: 3306
+    PW: 123456
+    User: mnhosted
 BrokerTopic:
   log: Vircle.Mnhost.log
 BrokerAddrs:
