@@ -456,10 +456,6 @@ func (e *Vps) processNewNode(orderId int64) error {
 			}
 			vpsInfo, err = newVps("ami-0b0426f6bc13cbfe4", "us-east-2", "", test_volume_size, nvpsInfo)
 			log.Printf("new vps:%v\n", vpsInfo)
-			if err != nil {
-				time.Sleep(5 * time.Second)
-			}
-			log.Printf("vpsinfo:%v\n", vpsInfo)
 			nvpsInfo.allocationId = vpsInfo.allocationId
 			nvpsInfo.allocationState = vpsInfo.allocationState
 			nvpsInfo.instanceId = vpsInfo.instanceId
@@ -467,6 +463,10 @@ func (e *Vps) processNewNode(orderId int64) error {
 			nvpsInfo.regionName = vpsInfo.regionName
 			nvpsInfo.volumeId = vpsInfo.volumeId
 			nvpsInfo.volumeState = vpsInfo.volumeState
+			if err != nil {
+				time.Sleep(5 * time.Second)
+				continue
+			}
 			break
 		}
 		tnvps.AllocateId = vpsInfo.allocationId
@@ -481,7 +481,7 @@ func (e *Vps) processNewNode(orderId int64) error {
 		tnvps.SecurityGroupName = group_name
 		tnvps.RegionName = vpsInfo.regionName
 		tnvps.IpAddress = vpsInfo.publicIp
-		log.Println("tnvps:%v\n", tnvps)
+		log.Printf("tnvps:%v\n", tnvps)
 		o = orm.NewOrm()
 		_, err = o.Insert(&tnvps)
 		if err != nil {
@@ -1199,7 +1199,7 @@ func VolumeMount(ipAddress, password string) error {
 		return err
 	}
 
-	cmd = fmt.Sprintf("fdisk -l |grep %s", device_name)
+	cmd = fmt.Sprintf("fdisk -l |grep %s", device_name1)
 	log.Printf("cmd:%s\n", cmd)
 	result, err = client.Execute(cmd)
 	if err != nil {
