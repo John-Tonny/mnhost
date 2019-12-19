@@ -6,6 +6,7 @@ ServiceName:
   apivps: go.mnhosted.api.vps
   user: go.mnhosted.srv.user
   vps: go.mnhosted.srv.vps
+  monitor: go.mnhosted.srv.monitor
 Version:
   mnmsg: latest
   log: latest
@@ -13,6 +14,7 @@ Version:
   apivps: latest
   user: latest
   vps: latest
+  monitor: latest
 Tracing:
   log: 127.0.0.1:6831
   mnmsg: 127.0.0.1:6831
@@ -20,6 +22,7 @@ Tracing:
   apivps: 127.0.0.1:6831
   user: 127.0.0.1:6831
   vps: 127.0.0.1:6831
+  monitor: 127.0.0.1:6831
 DB:
   order:
     DriverName: mysql
@@ -57,6 +60,8 @@ BrokerAddrs:
     - 127.0.0.1:9092
   vps:
     - 127.0.0.1:9092
+  monitor:
+    - 127.0.0.1:9092
 RegistryAddrs:
   default:
     - 127.0.0.1:8500
@@ -69,4 +74,6 @@ RegistryAddrs:
   user:
     - 127.0.0.1:8500
   vps:
+    - 127.0.0.1:8500
+  monitor:
     - 127.0.0.1:8500

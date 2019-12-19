@@ -34,13 +34,13 @@ var _ server.Option
 // Client API for Vps service
 
 type VpsService interface {
-	NewNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error)
-	DelNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error)
+	CreateVps(ctx context.Context, in *CreateVpsRequest, opts ...client.CallOption) (*Response, error)
+	RemoveVps(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error)
+	CreateNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error)
+	RemoveNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error)
 	ExpandVolume(ctx context.Context, in *VolumeRequest, opts ...client.CallOption) (*Response, error)
 	GetAllVps(ctx context.Context, in *Request, opts ...client.CallOption) (*VpsResponse, error)
-	GetAllNodeFromVps(ctx context.Context, in *Request, opts ...client.CallOption) (*NodeResponse, error)
 	GetAllNodeFromUser(ctx context.Context, in *Request, opts ...client.CallOption) (*NodeResponse, error)
-	RestartNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error)
 }
 
 type vpsService struct {
@@ -61,8 +61,8 @@ func NewVpsService(name string, c client.Client) VpsService {
 	}
 }
 
-func (c *vpsService) NewNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error) {
-	req := c.c.NewRequest(c.name, "Vps.NewNode", in)
+func (c *vpsService) CreateVps(ctx context.Context, in *CreateVpsRequest, opts ...client.CallOption) (*Response, error) {
+	req := c.c.NewRequest(c.name, "Vps.CreateVps", in)
 	out := new(Response)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
@@ -71,8 +71,28 @@ func (c *vpsService) NewNode(ctx context.Context, in *Request, opts ...client.Ca
 	return out, nil
 }
 
-func (c *vpsService) DelNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error) {
-	req := c.c.NewRequest(c.name, "Vps.DelNode", in)
+func (c *vpsService) RemoveVps(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error) {
+	req := c.c.NewRequest(c.name, "Vps.RemoveVps", in)
+	out := new(Response)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *vpsService) CreateNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error) {
+	req := c.c.NewRequest(c.name, "Vps.CreateNode", in)
+	out := new(Response)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *vpsService) RemoveNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error) {
+	req := c.c.NewRequest(c.name, "Vps.RemoveNode", in)
 	out := new(Response)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
@@ -101,16 +121,6 @@ func (c *vpsService) GetAllVps(ctx context.Context, in *Request, opts ...client.
 	return out, nil
 }
 
-func (c *vpsService) GetAllNodeFromVps(ctx context.Context, in *Request, opts ...client.CallOption) (*NodeResponse, error) {
-	req := c.c.NewRequest(c.name, "Vps.GetAllNodeFromVps", in)
-	out := new(NodeResponse)
-	err := c.c.Call(ctx, req, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *vpsService) GetAllNodeFromUser(ctx context.Context, in *Request, opts ...client.CallOption) (*NodeResponse, error) {
 	req := c.c.NewRequest(c.name, "Vps.GetAllNodeFromUser", in)
 	out := new(NodeResponse)
@@ -121,37 +131,27 @@ func (c *vpsService) GetAllNodeFromUser(ctx context.Context, in *Request, opts .
 	return out, nil
 }
 
-func (c *vpsService) RestartNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error) {
-	req := c.c.NewRequest(c.name, "Vps.RestartNode", in)
-	out := new(Response)
-	err := c.c.Call(ctx, req, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // Server API for Vps service
 
 type VpsHandler interface {
-	NewNode(context.Context, *Request, *Response) error
-	DelNode(context.Context, *Request, *Response) error
+	CreateVps(context.Context, *CreateVpsRequest, *Response) error
+	RemoveVps(context.Context, *Request, *Response) error
+	CreateNode(context.Context, *Request, *Response) error
+	RemoveNode(context.Context, *Request, *Response) error
 	ExpandVolume(context.Context, *VolumeRequest, *Response) error
 	GetAllVps(context.Context, *Request, *VpsResponse) error
-	GetAllNodeFromVps(context.Context, *Request, *NodeResponse) error
 	GetAllNodeFromUser(context.Context, *Request, *NodeResponse) error
-	RestartNode(context.Context, *Request, *Response) error
 }
 
 func RegisterVpsHandler(s server.Server, hdlr VpsHandler, opts ...server.HandlerOption) error {
 	type vps interface {
-		NewNode(ctx context.Context, in *Request, out *Response) error
-		DelNode(ctx context.Context, in *Request, out *Response) error
+		CreateVps(ctx context.Context, in *CreateVpsRequest, out *Response) error
+		RemoveVps(ctx context.Context, in *Request, out *Response) error
+		CreateNode(ctx context.Context, in *Request, out *Response) error
+		RemoveNode(ctx context.Context, in *Request, out *Response) error
 		ExpandVolume(ctx context.Context, in *VolumeRequest, out *Response) error
 		GetAllVps(ctx context.Context, in *Request, out *VpsResponse) error
-		GetAllNodeFromVps(ctx context.Context, in *Request, out *NodeResponse) error
 		GetAllNodeFromUser(ctx context.Context, in *Request, out *NodeResponse) error
-		RestartNode(ctx context.Context, in *Request, out *Response) error
 	}
 	type Vps struct {
 		vps
@@ -164,12 +164,20 @@ type vpsHandler struct {
 	VpsHandler
 }
 
-func (h *vpsHandler) NewNode(ctx context.Context, in *Request, out *Response) error {
-	return h.VpsHandler.NewNode(ctx, in, out)
+func (h *vpsHandler) CreateVps(ctx context.Context, in *CreateVpsRequest, out *Response) error {
+	return h.VpsHandler.CreateVps(ctx, in, out)
 }
 
-func (h *vpsHandler) DelNode(ctx context.Context, in *Request, out *Response) error {
-	return h.VpsHandler.DelNode(ctx, in, out)
+func (h *vpsHandler) RemoveVps(ctx context.Context, in *Request, out *Response) error {
+	return h.VpsHandler.RemoveVps(ctx, in, out)
+}
+
+func (h *vpsHandler) CreateNode(ctx context.Context, in *Request, out *Response) error {
+	return h.VpsHandler.CreateNode(ctx, in, out)
+}
+
+func (h *vpsHandler) RemoveNode(ctx context.Context, in *Request, out *Response) error {
+	return h.VpsHandler.RemoveNode(ctx, in, out)
 }
 
 func (h *vpsHandler) ExpandVolume(ctx context.Context, in *VolumeRequest, out *Response) error {
@@ -180,14 +188,6 @@ func (h *vpsHandler) GetAllVps(ctx context.Context, in *Request, out *VpsRespons
 	return h.VpsHandler.GetAllVps(ctx, in, out)
 }
 
-func (h *vpsHandler) GetAllNodeFromVps(ctx context.Context, in *Request, out *NodeResponse) error {
-	return h.VpsHandler.GetAllNodeFromVps(ctx, in, out)
-}
-
 func (h *vpsHandler) GetAllNodeFromUser(ctx context.Context, in *Request, out *NodeResponse) error {
 	return h.VpsHandler.GetAllNodeFromUser(ctx, in, out)
-}
-
-func (h *vpsHandler) RestartNode(ctx context.Context, in *Request, out *Response) error {
-	return h.VpsHandler.RestartNode(ctx, in, out)
 }

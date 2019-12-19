@@ -10,8 +10,6 @@ import (
 	//time包关于时间信息
 	"time"
 
-	"log"
-
 	"strconv"
 )
 
@@ -29,21 +27,22 @@ type TAccount struct {
 /* 云主机 table_name = Vps */
 type TVps struct {
 	Id                int64     `orm:"size(20)" json:"vps_id"`                        //主机编号
+	ClusterName       string    `orm:"size(32)" json:"cluster_name"`                  //集群名称
 	ProviderName      string    `orm:"size(32)" json:"provider_name"`                 //主机服务商名称
 	Cores             int       `orm:"default(2)" json:"cpus"`                        //核数量
 	Memory            int       `orm:"default(4)" json:"memory"`                      //内存
-	MaxNodes          int       `orm:"default(15)" json:max_nodes`                    //最大节点数
-	UsableNodes       int       `orm:"default(15)" json:usable_nodes`                 //可用节点数
 	RegionName        string    `orm:"size(64)" json:"region_name"`                   //区域
 	InstanceId        string    `orm:"size(64);unique" json:"instance_id"`            //实例ID
 	VolumeId          string    `orm:"size(64)" json:"volume_id"`                     //磁盘ID
 	SecurityGroupName string    `orm:"size(64)" json:"security_group_name"`           //安全组名称
 	KeyPairName       string    `orm:"size(64)" json:"key_pair_name"`                 //密钥名称
-	AllocateId        string    `orm:"size(64)" json:"allocate_id"`                   //分配地址id
-	IpAddress         string    `orm:"size(64)" json:"ip_address"`                    //主机IP
+	AllocationId      string    `orm:"size(64)" json:"allocation_id"`                 //分配地址id
+	PublicIp          string    `orm:"size(64)" json:"public_ip"`                     //主机公共IP
+	PrivateIp         string    `orm:"size(64)" json:"private_ip"`                    //主机私有IP
+	VpsRole           string    `orm:"size(64)" json:"vps_role"`                      //主机角色  manager,worker,nfs
+	Status            string    `orm:"size(64)" json:"status"`                        //主机角色状态 complete,wait,process
 	Createtime        time.Time `orm:"auto_now_add;type(datetime)" json:"createtime"` //创建时间
 	Updatetime        time.Time `orm:"auto_now;type(datetime)" json:"updatetime"`     //更新时间
-	Nodes             []*TNode  `orm:"reverse(many)" json:"nodes"`                    //用户创建的节点
 }
 
 /* 信息 table_name = Node */
@@ -51,12 +50,16 @@ type TNode struct {
 	Id     int64 `orm:"size(20)" json:"node_id"` //节点编号
 	Userid int64 `json:"userid"`
 	//User     		*TAccount 	`orm:"rel(fk)" json:"user_id"`   						//用户编号  	与用户进行关联
-	Vps        *TVps     `orm:"rel(fk)" json:"vps_id"`                         //主机编号		与主机表进行关联
-	Order      *TOrder   `orm:"rel(fk)" json:"order_id"`                       //订单编号		与订单表进行关联
-	CoinName   string    `orm:"size(32)" json:"coin_name"`                     //币名称
-	Port       int       `json:"port"`                                         //rpc端口号
-	Createtime time.Time `orm:"auto_now_add;type(datetime)" json:"createtime"` //创建时间
-	Updatetime time.Time `orm:"auto_now;type(datetime)" json:"updatetime"`     //更新时间
+	ClusterName string    `orm:"size(32)" json:"cluster_name"`                  //集群名称
+	Order       *TOrder   `orm:"rel(fk)" json:"order_id"`                       //订单编号		与订单表进行关联
+	CoinName    string    `orm:"size(32)" json:"coin_name"`                     //币名称
+	Port        int       `json:"port"`                                         //rpc端口号
+	PublicIp    string    `orm:"size(64)" json:"public_ip"`                     //主机公共IP
+	PrivateIp   string    `orm:"size(64)" json:"private_ip"`                    //主机私有IP
+	State       string    `orm:"size(64)" json:"state"`                         //主节点状态
+	Status      string    `orm:"size(64)" json:"staus"`                         //系统状态 (配置和数据准备)
+	Createtime  time.Time `orm:"auto_now_add;type(datetime)" json:"createtime"` //创建时间
+	Updatetime  time.Time `orm:"auto_now;type(datetime)" json:"updatetime"`     //更新时间
 }
 
 /* 云主机 table_name = Coin */
@@ -68,6 +71,7 @@ type TCoin struct {
 	FilePath   string    `orm:"size(128);unique" json:"file_path"`             //上传节点docker文件的路径
 	Docker     string    `orm:"size(32);unique" json:"docker"`                 //主节点docker名称
 	Status     string    `orm:"default(Enabled)" json:"staus"`                 //状态
+	Port       int       `json:"port"`                                         //rpc端口(主)
 	Createtime time.Time `orm:"auto_now_add;type(datetime)" json:"createtime"` //创建时间
 	Updatetime time.Time `orm:"auto_now;type(datetime)" json:"updatetime"`     //更新时间
 }
@@ -88,7 +92,7 @@ type TOrder struct {
 	Userid int64 `json:"userid"`                  //用户编号
 	//User       	*TAccount 	`orm:"rel(fk)" json:"userid"`    			//下单的用户编号   	//与用户表进行关联
 	Coinname   string    `orm:"size(32)" json:"coinname"`                      //
-	Mnkey      string    `orm:"size(64)" json:"mnkey"`                         //别名
+	Mnkey      string    `orm:"size(128)" json:"mnkey"`                        //别名
 	Timetype   int8      `json:"timetype"`                                     //
 	Price      int       `json:"price"`                                        //交易ID
 	Txid       string    `json:"txid"`                                         //收益地址
@@ -119,7 +123,6 @@ func init() {
 	user := config.GetDB("user").User
 	pw := config.GetDB("user").PW
 	dburl := user + ":" + pw + "@tcp(" + host + ":" + port + ")/" + dbname + "?charset=utf8"
-	log.Println(dburl)
 	orm.RegisterDataBase("default", "mysql", dburl, 30)
 
 	//注册model 建表

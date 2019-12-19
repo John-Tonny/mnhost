@@ -47,10 +47,7 @@ func main() {
 	user := v1.Group("/vps")
 	user.POST("/new", vpsHandler.NewNode)
 	user.POST("/del", vpsHandler.DelNode)
-	user.POST("/expand", vpsHandler.ExpandVolume)
-	user.POST("/restart", vpsHandler.RestartNode)
 	user.POST("/get", vpsHandler.GetAllVps)
-	user.POST("/nodeofvps", vpsHandler.GetAllNodeFromVps)
 	user.POST("/nodeofuser", vpsHandler.GetAllNodeFromUser)
 
 	srv.Handle("/", router)

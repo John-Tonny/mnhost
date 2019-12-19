@@ -6,18 +6,26 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"path/filepath"
+	"strings"
+
+	//"path/filepath"
 	"strconv"
+	"sync"
 	"time"
+
+	//"os"
 
 	"github.com/dynport/gossh"
 	"github.com/go-ini/ini"
 	"github.com/pytool/ssh"
 
+	//"github.com/robfig/cron"
+
 	"github.com/astaxie/beego/orm"
 	"github.com/micro/go-micro/broker"
 
 	uec2 "github.com/John-Tonny/micro/vps/amazon"
+	"github.com/John-Tonny/mnhost/common"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 
@@ -27,6 +35,7 @@ import (
 
 	"github.com/John-Tonny/mnhost/conf"
 	"github.com/John-Tonny/mnhost/model"
+	mnhostTypes "github.com/John-Tonny/mnhost/types"
 	"github.com/John-Tonny/mnhost/utils"
 )
 
@@ -34,72 +43,13 @@ type Vps struct {
 	Broker broker.Broker
 }
 
-type VpsInfo struct {
-	instanceId      string
-	regionName      string
-	allocationId    string
-	allocationState bool
-	publicIp        string
-	volumeId        string
-	volumeState     bool
-}
-
-type Volume struct {
-	Mountpoint string `json:"Mountpoint"`
-	Name       string `json:"Name"`
-}
-
 const service = "vps"
-const topic_newnode_success = "Vircle.Mnhost.Topic.NodeNew.Success"
-const topic_newnode_fail = "Vircle.Mnhost.Topic.NodeNew.Fail"
-const topic_newnode_start = "Vircle.Mnhost.Topic.NodeNew.Start"
-
-const topic_delnode_success = "Vircle.Mnhost.Topic.NodeDel.Success"
-const topic_delnode_fail = "Vircle.Mnhost.Topic.NodeDel.Fail"
-const topic_delnode_start = "Vircle.Mnhost.Topic.NodeDel.Start"
-
-const topic_expandvolume_success = "Vircle.Mnhost.Topic.ExpandVolume.Success"
-const topic_expandvolume_fail = "Vircle.Mnhost.Topic.ExpandVolume.Fail"
-const topic_expandvolume_start = "Vircle.Mnhost.Topic.ExpandVolume.Start"
-
-const topic_restartnode_success = "Vircle.Mnhost.Topic.RestartNode.Success"
-const topic_restartnode_fail = "Vircle.Mnhost.Topic.RestartNode.Fail"
-const topic_restartnode_start = "Vircle.Mnhost.Topic.RestartNode.Start"
-
-const ssh_password = "vpub$999000"
-const rpc_user = "vpub"
-const rpc_password = "vpub999000"
-const port_from = 19900
-const port_to = 20000
-const s_port = "9998"
-const s_rpcport = "9999"
-const s_workdir = "vircle"
-
-//const order_tablename = "order_node"
-//const order_id = "Id"
-const test_volume_size = 1
-
-const provider_name = "amazon"
-const group_name = "vcl-mngroup"
-const group_desc = "basic masternode group"
-const key_pair_name = "vcl-keypair"
-const device_name = "xvdk"
-const device_name1 = "xvdk1"
-const core_nums = 1
-const memory_size = 1
-const masternode_max_nums = 3
-
-const mount_point = "/var/lib/docker/volumes"
-
-const vps_retrys = 3
-const node_retrys = 3
-const instance_retrys = 30
-const volume_retrys = 10
 
 var (
 	topic       string
 	serviceName string
 	version     string
+	mutex       sync.Mutex
 )
 
 func init() {
@@ -118,9 +68,9 @@ func GetHandler(bk broker.Broker) *Vps {
 }
 
 // 发送vps
-func (e *Vps) pubMsg(userID, topic string, msgId int64) error {
+func (e *Vps) pubMsg(userID, topic, msgId string) error {
 	msg := mnPB.MnMsg{
-		Id: msgId,
+		MsgId: msgId,
 	}
 	body, err := json.Marshal(msg)
 	if err != nil {
@@ -193,21 +143,72 @@ func (e *Vps) pubLog(userID, method, msg string) error {
 	return nil
 }
 
-func (e *Vps) NewNode(ctx context.Context, req *vps.Request, rsp *vps.Response) error {
-	log.Println("new node request")
-	orderId := req.Id
+func (e *Vps) CreateVps(ctx context.Context, req *vps.CreateVpsRequest, rsp *vps.Response) error {
+	log.Println("create vps request")
 
-	var torder models.TOrder
+	go e.processCreateVps(req.ClusterName, req.Role, req.VolumeSize)
+
+	rsp.Errno = utils.RECODE_OK
+	rsp.Errmsg = utils.RecodeText(rsp.Errno)
+
+	log.Println("create vps request success")
+	return nil
+}
+
+func (e *Vps) RemoveVps(ctx context.Context, req *vps.Request, rsp *vps.Response) error {
+	log.Println("remove vps request")
+
+	var tvps models.TVps
 	o := orm.NewOrm()
-	qs := o.QueryTable("t_order")
-	err := qs.Filter("id", orderId).One(&torder)
+	qs := o.QueryTable("t_vps")
+	err := qs.Filter("instanceId", req.Id).One(&tvps)
 	if err != nil {
 		rsp.Errno = utils.RECODE_DBERR
 		rsp.Errmsg = utils.RecodeText(rsp.Errno)
 		return nil
 	}
 
-	go e.processNewNode(int64(torder.Id))
+	go e.processRemoveVps(req.Id)
+
+	rsp.Errno = utils.RECODE_OK
+	rsp.Errmsg = utils.RecodeText(rsp.Errno)
+
+	log.Println("remove vps request success")
+	return nil
+}
+
+func (e *Vps) CreateNode(ctx context.Context, req *vps.Request, rsp *vps.Response) error {
+	log.Println("create node request")
+
+	orderId, err := strconv.ParseInt(req.Id, 10, 64)
+	if err != nil {
+		rsp.Errno = utils.RECODE_DATAERR
+		rsp.Errmsg = utils.RecodeText(rsp.Errno)
+		return nil
+	}
+
+	var torder models.TOrder
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_order")
+	err = qs.Filter("id", orderId).One(&torder)
+	if err != nil {
+		rsp.Errno = utils.RECODE_DBERR
+		rsp.Errmsg = utils.RecodeText(rsp.Errno)
+		return nil
+	}
+
+	userId := strconv.FormatInt(torder.Userid, 10)
+
+	var tcoin models.TCoin
+	o = orm.NewOrm()
+	qs = o.QueryTable("t_coin")
+	err = qs.Filter("name", torder.Coinname).Filter("status", "Enabled").One(&tcoin)
+	if err != nil {
+		e.pubErrMsg(userId, "newnode", utils.RECODE_NODATA, err.Error(), mnhostTypes.TOPIC_NEWNODE_FAIL)
+		return err
+	}
+
+	go e.processCreateNode(orderId, "cluster1")
 
 	rsp.Errno = utils.RECODE_OK
 	rsp.Errmsg = utils.RecodeText(rsp.Errno)
@@ -215,12 +216,12 @@ func (e *Vps) NewNode(ctx context.Context, req *vps.Request, rsp *vps.Response) 
 	jorder, err := json.Marshal(torder)
 	rsp.Mix = jorder
 
-	log.Println("new node request success")
+	log.Println("create node request success")
 	return nil
 }
 
-func (e *Vps) DelNode(ctx context.Context, req *vps.Request, rsp *vps.Response) error {
-	log.Println("del node request")
+func (e *Vps) RemoveNode(ctx context.Context, req *vps.Request, rsp *vps.Response) error {
+	log.Println("remove node request")
 	nodeId := req.Id
 
 	var tnode models.TNode
@@ -233,7 +234,7 @@ func (e *Vps) DelNode(ctx context.Context, req *vps.Request, rsp *vps.Response) 
 		return err
 	}
 
-	go e.processDelNode(int64(tnode.Id))
+	go e.processRemoveNode(tnode.Id, "cluster1")
 
 	rsp.Errno = utils.RECODE_OK
 	rsp.Errmsg = utils.RecodeText(rsp.Errno)
@@ -241,7 +242,7 @@ func (e *Vps) DelNode(ctx context.Context, req *vps.Request, rsp *vps.Response) 
 	jnode, err := json.Marshal(tnode)
 	rsp.Mix = jnode
 
-	log.Println("success del node request")
+	log.Println("success remove node request")
 	return nil
 }
 
@@ -266,7 +267,7 @@ func (e *Vps) ExpandVolume(ctx context.Context, req *vps.VolumeRequest, rsp *vps
 		return nil
 	}
 
-	go e.processExpandVolume("", volumeId, size, tvps.IpAddress, ssh_password)
+	go e.processExpandVolume("", volumeId, size, tvps.PublicIp, tvps.PrivateIp, mnhostTypes.SSH_PASSWORD)
 
 	jvps, err := json.Marshal(tvps)
 	rsp.Mix = jvps
@@ -311,41 +312,9 @@ func (e *Vps) GetAllVps(ctx context.Context, req *vps.Request, rsp *vps.VpsRespo
 	return nil
 }
 
-func (e *Vps) GetAllNodeFromVps(ctx context.Context, req *vps.Request, rsp *vps.NodeResponse) error {
-	vpsId := req.Id
-	log.Printf("get all node from vpsId: %d\n", vpsId)
-	var tnodes []models.TNode
-	o := orm.NewOrm()
-	qs := o.QueryTable("t_node")
-	nums, err := qs.Filter("vps_id", vpsId).All(&tnodes)
-	if err != nil {
-		rsp.Errno = utils.RECODE_QUERYERR
-		rsp.Errmsg = utils.RecodeText(rsp.Errno)
-		return err
-	}
-	if nums == 0 {
-		rsp.Errno = utils.RECODE_NODATA
-		rsp.Errmsg = utils.RecodeText(rsp.Errno)
-		return nil
-	}
-
-	pbNodes := make([]*vps.Node, len(tnodes))
-	for i, node := range tnodes {
-		pbNode := Node2PBNode(&node)
-		pbNodes[i] = &pbNode
-	}
-
-	rsp.Nodes = pbNodes
-
-	rsp.Errno = utils.RECODE_OK
-	rsp.Errmsg = utils.RecodeText(rsp.Errno)
-	log.Printf("success get all node from vpsId: %d\n", vpsId)
-	return nil
-}
-
 func (e *Vps) GetAllNodeFromUser(ctx context.Context, req *vps.Request, rsp *vps.NodeResponse) error {
 	userId := req.Id
-	log.Printf("get all node from userId: %d\n", userId)
+	log.Printf("get all node from userId: %s\n", userId)
 
 	var tnodes []models.TNode
 	o := orm.NewOrm()
@@ -373,683 +342,541 @@ func (e *Vps) GetAllNodeFromUser(ctx context.Context, req *vps.Request, rsp *vps
 	rsp.Errno = utils.RECODE_OK
 	rsp.Errmsg = utils.RecodeText(rsp.Errno)
 
-	log.Printf("success get all node from userId: %d\n", userId)
+	log.Printf("success get all node from userId: %s\n", userId)
 	return nil
 }
 
-func (e *Vps) RestartNode(ctx context.Context, req *vps.Request, rsp *vps.Response) error {
-	nodeId := req.Id
-	log.Printf("restart node request from %v\n", nodeId)
+func (e *Vps) processCreateVps(clusterName, role string, volumeSize int64) error {
+	log.Printf("process create Vps from cluster:%s, role:%s, size:%d\n", clusterName, role, volumeSize)
 
-	var tnode models.TNode
-	o := orm.NewOrm()
-	qs := o.QueryTable("t_node")
-	err := qs.Filter("id", nodeId).One(&tnode)
+	var vpsInfo *mnhostTypes.VpsInfo
+	vpsInfo, errcode, err := NewVps(mnhostTypes.SYSTEM_IMAGE, mnhostTypes.ZONE_DEFAULT, mnhostTypes.INSTANCE_TYPE_DEFAULT, clusterName, role, volumeSize, false, false)
 	if err != nil {
-		rsp.Errno = utils.RECODE_NODATA
-		rsp.Errmsg = utils.RecodeText(rsp.Errno)
-		return err
+		e.pubErrMsg("", "newvps", errcode, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
+		return nil
+	}
+	err = EfsMount(vpsInfo.PublicIp, vpsInfo.PrivateIp, mnhostTypes.SSH_PASSWORD)
+	if err != nil {
+		e.pubErrMsg("", "newvps", utils.EFS_MOUNT_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
+		return nil
 	}
 
-	userId := strconv.FormatInt(tnode.Userid, 10)
+	if (role == mnhostTypes.ROLE_MANAGER) || (role == mnhostTypes.ROLE_WORKER) {
+		publicIp, privateIp, err := common.GetVpsIp("cluster1")
+		if err != nil {
+			e.pubErrMsg("", "newvps", utils.MANAGER_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
+			return nil
+		}
+
+		mc, _, err := common.DockerNewClient(publicIp, privateIp)
+		if err != nil {
+			e.pubErrMsg("", "newvps", utils.DOCKER_CONNECT_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
+			return nil
+		}
+		defer mc.Close()
+
+		managerToken, workerToken, err := mc.SwarmInspectA()
+		if err != nil {
+			e.pubErrMsg("", "newvps", utils.SWARM_INSPECT_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
+			return nil
+		} else {
+			c, _, err := common.DockerNewClient(vpsInfo.PublicIp, vpsInfo.PrivateIp)
+			if err != nil {
+				e.pubErrMsg("", "newvps", utils.DOCKER_CONNECT_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
+				return nil
+			}
+			defer c.Close()
+
+			token := managerToken
+			status := "manager"
+			if role == mnhostTypes.ROLE_WORKER {
+				token = workerToken
+				status = "worker"
+			}
+			err = c.SwarmJoinA(vpsInfo.PrivateIp, privateIp, token)
+			if err != nil {
+				e.pubErrMsg("", "newvps", utils.SWARM_INIT_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
+				return nil
+			}
+
+			var tvps models.TVps
+			o := orm.NewOrm()
+			qs := o.QueryTable("t_vps")
+			err = qs.Filter("instanceId", vpsInfo.InstanceId).One(&tvps)
+			if err != nil {
+				e.pubErrMsg("", "delvps", utils.RECODE_DATAERR, err.Error(), mnhostTypes.TOPIC_DELVPS_FAIL)
+				return nil
+			}
+
+			o = orm.NewOrm()
+			tvps.Status = status
+			_, err = o.Update(&tvps)
+			if err != nil {
+				return nil
+			}
+		}
+	}
+
+	e.pubMsg("", mnhostTypes.TOPIC_NEWVPS_SUCCESS, vpsInfo.InstanceId)
+	log.Printf("success process create Vps from cluster:%s, role:%s, size:%d\n", clusterName, role, volumeSize)
+	return nil
+}
+
+func (e *Vps) processRemoveVps(instanceId string) error {
+	log.Printf("process remove Vps from instanceId:%s\n", instanceId)
 
 	var tvps models.TVps
-	o = orm.NewOrm()
-	qs = o.QueryTable("t_vps")
-	err = qs.Filter("id", tnode.Vps.Id).One(&tvps)
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_vps")
+	err := qs.Filter("instanceId", instanceId).One(&tvps)
 	if err != nil {
-		rsp.Errno = utils.RECODE_NODATA
-		rsp.Errmsg = utils.RecodeText(rsp.Errno)
-		return err
+		e.pubErrMsg("", "delvps", utils.RECODE_DATAERR, err.Error(), mnhostTypes.TOPIC_DELVPS_FAIL)
+		return nil
 	}
 
-	go e.processRestartNode(userId, tvps.IpAddress, ssh_password, tnode.Port, nodeId)
-
-	type Rmsg struct {
-		NodeId    string
-		IpAddress string
-		RpcPort   string
+	errcode, err := DelVps("", instanceId)
+	if err != nil {
+		e.pubErrMsg("", "delvps", errcode, err.Error(), mnhostTypes.TOPIC_DELVPS_FAIL)
+		return nil
 	}
-	msg := Rmsg{
-		NodeId:    strconv.FormatInt(nodeId, 10),
-		IpAddress: tvps.IpAddress,
-		RpcPort:   strconv.Itoa(tnode.Port),
-	}
-	jmsg, err := json.Marshal(msg)
-	rsp.Mix = jmsg
 
-	rsp.Errno = utils.RECODE_OK
-	rsp.Errmsg = utils.RecodeText(rsp.Errno)
-	log.Printf("success restart node request from %d\n", nodeId)
+	e.pubMsg("", mnhostTypes.TOPIC_DELVPS_SUCCESS, instanceId)
+	log.Printf("success process remove Vps from instanceId:%s\n", instanceId)
 	return nil
 }
 
-func (e *Vps) processNewNode(orderId int64) error {
-	log.Printf("process new node from orderid %d\n", orderId)
+func (e *Vps) processCreateNode(orderId int64, clusterName string) error {
+	log.Printf("process create node from orderid %d\n", orderId)
 
 	var torder models.TOrder
 	o := orm.NewOrm()
 	qs := o.QueryTable("t_order")
 	err := qs.Filter("id", orderId).One(&torder)
 	if err != nil {
-		e.pubErrMsg("", "newnode", utils.RECODE_NODATA, err.Error(), topic_newnode_fail)
+		e.pubErrMsg("", "newnode", utils.RECODE_NODATA, err.Error(), mnhostTypes.TOPIC_NEWNODE_FAIL)
+		return err
+	}
+	userId := strconv.FormatInt(torder.Userid, 10)
+
+	var tcoin models.TCoin
+	o = orm.NewOrm()
+	qs = o.QueryTable("t_coin")
+	err = qs.Filter("name", torder.Coinname).Filter("status", "Enabled").One(&tcoin)
+	if err != nil {
+		e.pubErrMsg(userId, "newnode", utils.RECODE_NODATA, err.Error(), mnhostTypes.TOPIC_NEWNODE_FAIL)
 		return err
 	}
 
-	userId := strconv.FormatInt(torder.Userid, 10)
-
-	var nvpsInfo VpsInfo
-	var vpsInfo *VpsInfo
-	var tvps models.TVps
-	tnvps := models.TVps{}
-	o = orm.NewOrm()
-	qs = o.QueryTable("t_vps")
-	err = qs.Filter("usable_nodes__gt", 0).One(&tvps)
-	retrys := 0
+	errcode, err := NewNode(orderId, clusterName)
 	if err != nil {
-		log.Printf("err1:%v\n", err)
-		for { //循环
-			retrys++
-			if retrys > vps_retrys {
-				e.pubErrMsg(userId, "newnode", utils.TIMEOUT_VPS, err.Error(), topic_newnode_fail)
-				return nil
-			}
-			vpsInfo, err = newVps("ami-0b0426f6bc13cbfe4", "us-east-2", "", test_volume_size, nvpsInfo)
-			log.Printf("new vps:%v\n", vpsInfo)
-			nvpsInfo.allocationId = vpsInfo.allocationId
-			nvpsInfo.allocationState = vpsInfo.allocationState
-			nvpsInfo.instanceId = vpsInfo.instanceId
-			nvpsInfo.publicIp = vpsInfo.publicIp
-			nvpsInfo.regionName = vpsInfo.regionName
-			nvpsInfo.volumeId = vpsInfo.volumeId
-			nvpsInfo.volumeState = vpsInfo.volumeState
-			if err != nil {
-				time.Sleep(5 * time.Second)
-				continue
-			}
-			break
-		}
-		tnvps.AllocateId = vpsInfo.allocationId
-		tnvps.InstanceId = vpsInfo.instanceId
-		tnvps.VolumeId = vpsInfo.volumeId
-		tnvps.ProviderName = provider_name
-		tnvps.Cores = core_nums
-		tnvps.Memory = memory_size
-		tnvps.KeyPairName = key_pair_name
-		tnvps.MaxNodes = masternode_max_nums
-		tnvps.UsableNodes = masternode_max_nums
-		tnvps.SecurityGroupName = group_name
-		tnvps.RegionName = vpsInfo.regionName
-		tnvps.IpAddress = vpsInfo.publicIp
-		log.Printf("tnvps:%v\n", tnvps)
-		o = orm.NewOrm()
-		_, err = o.Insert(&tnvps)
-		if err != nil {
-			e.pubErrMsg(userId, "newnode", utils.RECODE_INSERTERR, err.Error(), topic_newnode_fail)
-			return nil
-		}
-		o = orm.NewOrm()
-		qs = o.QueryTable("t_vps")
-		err = qs.Filter("usable_nodes__gt", 0).One(&tvps)
-		if err != nil {
-			e.pubErrMsg(userId, "newnode", utils.RECORD_SYSTEMERR, err.Error(), topic_newnode_fail)
-			return err
-		}
+		e.pubErrMsg(userId, "newnode", errcode, err.Error(), mnhostTypes.TOPIC_NEWNODE_FAIL)
+		log.Printf("err:%s-%s\n", errcode, err)
+		return err
 	}
 
-	retrys = 0
-	for { //循环
-		retrys++
-		if retrys > node_retrys {
-			e.pubErrMsg(userId, "newnode", utils.TIMEOUT_VOLUME, "", topic_newnode_fail)
-			return nil
-		}
-		err = newNode(tvps.Id, torder.Coinname, tvps.IpAddress, ssh_password, torder.Mnkey)
-		if err != nil {
-			time.Sleep(2 * time.Second)
-			continue
-		}
-		break
-	}
-
-	rpcPort, _, err := getRpcPort(tvps.Id)
-	if err != nil {
-		e.pubErrMsg(userId, "newnode", utils.RECODE_INSERTERR, err.Error(), topic_newnode_fail)
-		return nil
-	}
-
-	tnode := models.TNode{}
-	tnode.CoinName = torder.Coinname
-	tnode.Userid = torder.Userid
-	tnode.Vps = &tvps
-	tnode.Order = &torder
-	tnode.Port = rpcPort
-	o = orm.NewOrm()
-	_, err = o.Insert(&tnode)
-	if err != nil {
-		e.pubErrMsg(userId, "newnode", utils.RECODE_INSERTERR, err.Error(), topic_newnode_fail)
-		return nil
-	}
-
-	o = orm.NewOrm()
-	tvps.UsableNodes = tvps.UsableNodes - 1
-	_, err = o.Update(&tvps)
-	if err != nil {
-		e.pubErrMsg(userId, "newnode", utils.RECODE_UPDATEERR, err.Error(), topic_newnode_fail)
-		return nil
-	}
-
-	/*o = orm.NewOrm()
-	order.Status = models.ORDER_STATUS_COMPLETE
-	_, err = o.Update(&order)
-	if err != nil {
-		e.pubErrMsg(userId, "newnode", utils.RECODE_UPDATEERR, err.Error(), topic_newnode_fail)
-		return nil
-	}*/
-
-	e.pubMsg(userId, topic_newnode_success, orderId)
-	log.Printf("success process new node %v\n", orderId)
+	e.pubMsg(userId, mnhostTypes.TOPIC_NEWNODE_SUCCESS, strconv.FormatInt(orderId, 10))
+	log.Printf("success process create node %v\n", orderId)
 	return nil
 }
 
-func (e *Vps) processDelNode(nodeId int64) error {
-	log.Printf("process del node from %v\n", nodeId)
+func (e *Vps) processRemoveNode(nodeId int64, clusterName string) error {
+	log.Printf("process remove node from %v\n", nodeId)
 
 	var tnode models.TNode
 	o := orm.NewOrm()
 	qs := o.QueryTable("t_node")
 	err := qs.Filter("id", nodeId).One(&tnode)
 	if err != nil {
-		e.pubErrMsg("", "delnode", utils.RECODE_NODATA, err.Error(), topic_newnode_fail)
+		e.pubErrMsg("", "delnode", utils.RECODE_NODATA, err.Error(), mnhostTypes.TOPIC_DELNODE_FAIL)
 		return err
 	}
 	log.Printf("node:%v\n", tnode)
 
 	userId := strconv.FormatInt(tnode.Userid, 10)
 
-	var tvps models.TVps
-	o = orm.NewOrm()
-	qs = o.QueryTable("t_vps")
-	err = qs.Filter("id", tnode.Vps.Id).One(&tvps)
+	errcode, err := DelNode(nodeId, clusterName)
 	if err != nil {
-		e.pubErrMsg(userId, "delnode", utils.RECODE_NODATA, err.Error(), topic_newnode_fail)
+		e.pubErrMsg(userId, "delnode", errcode, err.Error(), mnhostTypes.TOPIC_DELNODE_FAIL)
 		return err
 	}
-	log.Printf("vps:%v\n", tvps)
 
-	var torder models.TOrder
-	o = orm.NewOrm()
-	qs = o.QueryTable("t_order")
-	err = qs.Filter("id", tnode.Order.Id).One(&torder)
-	if err != nil {
-		e.pubErrMsg(userId, "delnode", utils.RECODE_NODATA, err.Error(), topic_newnode_fail)
-		return err
-	}
-	log.Printf("tnode:%v\n", torder)
-
-	client := gossh.New(tvps.IpAddress, "root")
-	if client == nil {
-		return errors.New("client no connect")
-	}
-	client.SetPassword(ssh_password)
-
-	defer client.Close()
-
-	port := tnode.Port
-	volumeName := "mn" + strconv.Itoa(port)
-
-	cmd := "docker stop  `docker ps -aq --filter name=" + volumeName + "`"
-	sshCmd(client, cmd, 5)
-	cmd = "docker rm  `docker ps -aq --filter name=" + volumeName + "`"
-	sshCmd(client, cmd, 5)
-	cmd = "docker volume rm " + volumeName
-	sshCmd(client, cmd, 5)
-
-	o = orm.NewOrm()
-	_, err = o.Delete(&tnode)
-	if err != nil {
-		e.pubErrMsg(userId, "delnode", utils.RECODE_DELETEERR, "", topic_delnode_fail)
-		return nil
-	}
-
-	o = orm.NewOrm()
-	tvps.UsableNodes = tvps.UsableNodes + 1
-	_, err = o.Update(&tvps)
-	if err != nil {
-		e.pubErrMsg(userId, "delnode", utils.RECODE_UPDATEERR, "", topic_delnode_fail)
-		return nil
-	}
-
-	/*o = orm.NewOrm()
-	order.Status = models.ORDER_STATUS_EXPIRED
-	_, err = o.Update(&order)
-	if err != nil {
-		e.pubErrMsg(userId, "delnode", utils.RECODE_UPDATEERR, "", topic_delnode_fail)
-		return nil
-	}*/
-
-	isDel, err := e.delVps(userId, tvps.Id)
-	if err != nil {
-		e.pubErrMsg(userId, "delnode", utils.RECODE_DELETEERR, "", topic_delnode_fail)
-	}
-
-	if isDel == true {
-		o = orm.NewOrm()
-		_, err = o.Delete(&tvps)
-		if err != nil {
-			e.pubErrMsg(userId, "delnode", utils.RECODE_DELETEERR, "", topic_newnode_fail)
-			return nil
-		}
-	}
-
-	e.pubMsg(userId, topic_delnode_success, nodeId)
-	log.Printf("success process del node from %v\n", nodeId)
+	e.pubMsg(userId, mnhostTypes.TOPIC_DELNODE_SUCCESS, strconv.FormatInt(nodeId, 10))
+	log.Printf("success process remove node from %v\n", nodeId)
 
 	return nil
 }
 
-func (e *Vps) processExpandVolume(userId, volumeId string, size int64, ipAddress, password string) error {
+func (e *Vps) processExpandVolume(userId, volumeId string, size int64, publicIp, privateIp, password string) error {
 	log.Printf("process expandvolume, volume:%s, size:%d\n", volumeId, size)
 
-	c, err := uec2.NewEc2Client("us-east-2", "test-account")
+	c, err := uec2.NewEc2Client(mnhostTypes.ZONE_DEFAULT, mnhostTypes.AWS_ACCOUNT)
 	if err != nil {
-		e.pubErrMsg(userId, "expandvolume", utils.CONNECT_ERR, err.Error(), topic_expandvolume_fail)
+		e.pubErrMsg(userId, "expandvolume", utils.VPS_CONNECT_ERR, err.Error(), mnhostTypes.TOPIC_EXPANDVOLUME_FAIL)
 		return err
 	}
 
 	result, err := c.GetDescribeVolumes([]string{volumeId})
 	if err != nil {
-		e.pubErrMsg(userId, "expandvolume", utils.CONNECT_ERR, err.Error(), topic_expandvolume_fail)
+		e.pubErrMsg(userId, "expandvolume", utils.DESC_VOLUME_ERR, err.Error(), mnhostTypes.TOPIC_EXPANDVOLUME_FAIL)
 		return err
 	}
 	if result == nil {
-		e.pubErrMsg(userId, "expandvolume", utils.RECORD_SYSTEMERR, err.Error(), topic_expandvolume_fail)
+		e.pubErrMsg(userId, "expandvolume", utils.RECORD_SYSTEMERR, err.Error(), mnhostTypes.TOPIC_EXPANDVOLUME_FAIL)
 		return err
 	}
 	log.Printf("volume:%s\n", result)
 
 	osize := aws.Int64Value(result.Volumes[0].Size)
 	if osize > size {
-		e.pubErrMsg(userId, "expandvolume", utils.RECODE_DATAERR, "", topic_expandvolume_fail)
+		e.pubErrMsg(userId, "expandvolume", utils.RECODE_DATAERR, "", mnhostTypes.TOPIC_EXPANDVOLUME_FAIL)
 		return err
 	}
 
 	_, err = c.ModifyVolumes(volumeId, size)
 	if err != nil {
-		e.pubErrMsg(userId, "expandvolume", utils.CONNECT_ERR, err.Error(), topic_expandvolume_fail)
+		e.pubErrMsg(userId, "expandvolume", utils.MODIFY_VOLUME_ERR, err.Error(), mnhostTypes.TOPIC_EXPANDVOLUME_FAIL)
 		return err
 	}
 
-	client := gossh.New(ipAddress, "root")
+	client := common.SshNewClient(publicIp, privateIp, mnhostTypes.SSH_PASSWORD)
 	if client == nil {
+		e.pubErrMsg(userId, "expandvolume", utils.SSH_CONNECT_ERR, err.Error(), mnhostTypes.TOPIC_EXPANDVOLUME_FAIL)
 		return errors.New("client no connect")
 	}
-
-	// my default agent authentication is used. use
-	client.SetPassword(ssh_password)
 	defer client.Close()
 
 	var rsp *gossh.Result
-	cmd := fmt.Sprintf("growpart /dev/%s 1", device_name)
+	cmd := fmt.Sprintf("growpart /dev/%s 1", mnhostTypes.DEVICE_NAME)
 	rsp, err = sshCmd(client, cmd, 5)
 	if err != nil {
-		e.pubErrMsg(userId, "expandvolume", utils.CONNECT_ERR, err.Error(), topic_expandvolume_fail)
+		e.pubErrMsg(userId, "expandvolume", utils.GROWPART_ERR, err.Error(), mnhostTypes.TOPIC_EXPANDVOLUME_FAIL)
 		return err
 	}
 
-	cmd = fmt.Sprintf("resize2fs /dev/%s", device_name1)
+	cmd = fmt.Sprintf("resize2fs /dev/%s", mnhostTypes.DEVICE_NAME1)
 	rsp, err = sshCmd(client, cmd, 5)
 	if err != nil {
-		e.pubErrMsg(userId, "expandvolume", utils.CONNECT_ERR, err.Error(), topic_expandvolume_fail)
+		e.pubErrMsg(userId, "expandvolume", utils.RESIZE_ERR, err.Error(), mnhostTypes.TOPIC_EXPANDVOLUME_FAIL)
 		return err
 	}
 	log.Printf("rsp:%v\n", rsp)
 
-	e.pubMsg(userId, topic_expandvolume_success, 1)
+	e.pubMsg(userId, mnhostTypes.TOPIC_EXPANDVOLUME_SUCCESS, volumeId)
 	log.Printf("success process expandvolume, volume:%v, size:%d\n", volumeId, size)
 	return nil
 }
 
-func (e *Vps) processRestartNode(userId, ipAddress, password string, port int, nodeId int64) error {
-	log.Printf("process restart node from %s:%d\n", ipAddress, port)
+func NewVps(imageId, zone, instanceType, clusterName, role string, volumeSize int64, bAllocation, bVolume bool) (*mnhostTypes.VpsInfo, string, error) {
+	log.Printf("start new vps")
 
-	client := gossh.New(ipAddress, "root")
-	if client == nil {
-		return errors.New("client no connect")
+	var vpsInfo mnhostTypes.VpsInfo
+	vpsInfo.AllocationState = false
+	vpsInfo.VolumeState = false
+
+	if len(role) == 0 {
+		role = mnhostTypes.ROLE_MANAGER
 	}
-	// my default agent authentication is used. use
-	client.SetPassword(password)
-	defer client.Close()
-
-	var rsp *gossh.Result
-	cmd := fmt.Sprintf("docker ps -a | grep mn%d | awk  '{print $1}'", port)
-	rsp, err := sshCmd(client, cmd, 5)
-	if err != nil {
-		e.pubErrMsg(userId, "restartnode", utils.CONNECT_ERR, err.Error(), topic_restartnode_fail)
-		return err
-	}
-	containerId := rsp.Stdout()
-	containerId = containerId[:8]
-	cmd = fmt.Sprintf("docker restart %s", containerId)
-	rsp, err = sshCmd(client, cmd, 5)
-	if err != nil {
-		log.Printf("err:%v\n", err)
-		e.pubErrMsg(userId, "restartnode", utils.CONNECT_ERR, err.Error(), topic_restartnode_fail)
-		return err
-	}
-	log.Printf("container:%v\n", rsp.Stdout())
-
-	e.pubMsg(userId, topic_restartnode_success, nodeId)
-	log.Printf("success process restart node from %s:%d\n", ipAddress, port)
-	return nil
-}
-
-func (e *Vps) delVps(userId string, vpsId int64) (bool, error) {
-	log.Println("start del vps ", vpsId)
-	var tnodes []models.TNode
-	o := orm.NewOrm()
-	qs := o.QueryTable("t_node")
-	nums, err := qs.Filter("vps_id", vpsId).All(&tnodes)
-	if err != nil {
-		e.pubErrMsg(userId, "delnode", utils.RECODE_NODATA, err.Error(), topic_newnode_fail)
-		return false, err
-	}
-	if nums == 0 {
-		var tvps models.TVps
-		o = orm.NewOrm()
-		qs = o.QueryTable("t_vps")
-		err = qs.Filter("id", vpsId).One(&tvps)
-		if err != nil {
-			e.pubErrMsg(userId, "delnode", utils.RECODE_NODATA, err.Error(), topic_newnode_fail)
-			return false, err
-		}
-
-		c, err := uec2.NewEc2Client("us-east-2", "test-account")
-		if err != nil {
-			e.pubErrMsg(userId, "delnode", utils.CONNECT_ERR, err.Error(), topic_newnode_fail)
-			return false, err
-		}
-
-		_, err = c.TerminateInstance(tvps.InstanceId)
-		if err != nil {
-			e.pubErrMsg(userId, "delnode", utils.TERMINATE_INSTANCE_ERR, err.Error(), topic_newnode_fail)
-			return false, err
-		}
-
-		retrys := 0
-		for { //循环
-			retrys++
-			if retrys > instance_retrys {
-				e.pubErrMsg(userId, "delnode", utils.TIMEOUT_VPS, err.Error(), topic_newnode_fail)
-				return false, err
-			}
-			result, err := c.GetDescribeInstance([]string{tvps.InstanceId})
-			if err == nil {
-				state := aws.StringValue(result.Reservations[0].Instances[0].State.Name)
-				if state == "terminated" {
-					break
-				}
-			}
-			time.Sleep(time.Second)
-		}
-
-		_, err = c.DeleteVolumes(tvps.VolumeId)
-		if err != nil {
-			e.pubErrMsg(userId, "delnode", utils.DELETE_VOLUME_ERR, err.Error(), topic_newnode_fail)
-			return false, err
-		}
-
-		_, err = c.ReleaseAddresss(tvps.AllocateId)
-		if err != nil {
-			e.pubErrMsg(userId, "delnode", utils.RELEASE_ADDRESS_ERR, err.Error(), topic_newnode_fail)
-			return false, err
-		}
-
-		return true, nil
-	}
-	return false, nil
-}
-
-func newVps(imageId, zone, instanceType string, volumeSize int64, nvpsInfo VpsInfo) (*VpsInfo, error) {
-	log.Printf("new vps start")
 
 	if len(instanceType) == 0 {
-		instanceType = "t2.micro"
+		instanceType = mnhostTypes.INSTANCE_TYPE_DEFAULT
 	}
 
 	if volumeSize == 0 {
-		volumeSize = 20
+		volumeSize = mnhostTypes.VOLUME_SIZE_DEFAULT
 	}
 
-	var vpsInfo VpsInfo
-	vpsInfo.allocationState = false
-	vpsInfo.volumeState = false
-
-	c, err := uec2.NewEc2Client(zone, "test-account")
+	c, err := uec2.NewEc2Client(mnhostTypes.ZONE_DEFAULT, mnhostTypes.AWS_ACCOUNT)
 	if err != nil {
-		return &vpsInfo, err
+		return &vpsInfo, utils.VPS_CONNECT_ERR, err
 	}
 
 	var securityGroupId string
-	groupResult, err := c.GetDescribeSecurityGroupsFromName([]string{group_name})
+	groupResult, err := c.GetDescribeSecurityGroupsFromName([]string{mnhostTypes.GROUP_NAME})
 	if err != nil {
 		ipPermissions := GetIpPermission()
-		securityGroupId, err = c.CreateSecurityGroups(group_desc, group_desc, ipPermissions)
+		securityGroupId, err = c.CreateSecurityGroups(mnhostTypes.GROUP_DESC, mnhostTypes.GROUP_DESC, ipPermissions)
 		if err != nil {
-			return &vpsInfo, err
+			return &vpsInfo, utils.CREATE_GROUP_ERR, err
 		}
 	} else {
 		securityGroupId = aws.StringValue(groupResult.SecurityGroups[0].GroupId)
 	}
 
-	_, err = c.GetDescribeKeyPairs([]string{key_pair_name})
+	_, err = c.GetDescribeKeyPairs([]string{mnhostTypes.KEY_PAIR_NAME})
 	if err != nil {
-		_, err := c.CreateKeyPairs(key_pair_name)
+		_, err := c.CreateKeyPairs(mnhostTypes.KEY_PAIR_NAME)
 		if err != nil {
-			return &vpsInfo, err
+			return &vpsInfo, utils.CREATE_KEYPAIR_ERR, err
 		}
 	}
 
-	retrys := 0
-	regionName := ""
-	instanceId := nvpsInfo.instanceId
-	for { //循环
-		retrys++
-		if retrys > instance_retrys {
-			err = errors.New("instance timeout")
-			return &vpsInfo, err
-		}
-		result, err := c.GetDescribeInstance([]string{instanceId})
-		if err != nil {
-			instanceId, err = c.CreateInstances(imageId, instanceType, key_pair_name, securityGroupId)
-			continue
-		}
-		regionName = aws.StringValue(result.Reservations[0].Instances[0].Placement.AvailabilityZone)
-		state := aws.StringValue(result.Reservations[0].Instances[0].State.Name)
-		if state == "running" {
-			break
-		} else {
-			c.StartInstance(instanceId)
-			time.Sleep(time.Second)
-			continue
-		}
-		time.Sleep(time.Second)
+	instanceId, err := c.CreateInstances(imageId, instanceType, mnhostTypes.KEY_PAIR_NAME, securityGroupId)
+	if err != nil {
+		return &vpsInfo, utils.CREATE_INSTANCE_ERR, err
 	}
-	vpsInfo.instanceId = instanceId
-	vpsInfo.regionName = regionName
+	vpsInfo.InstanceId = instanceId
 
-	allocationId := ""
-	publicIp := ""
-	if len(nvpsInfo.allocationId) == 0 {
-		publicIp, allocationId, err = c.AllocateAddresss(instanceId)
-		if err != nil {
-			return &vpsInfo, err
-		}
+	err = c.WaitUntilInstanceStatusOkA([]string{instanceId})
+	//err = c.WaitUntilInstanceRun([]string{instanceId})
+	if err != nil {
+		return &vpsInfo, utils.WAIT_INSTANCE_ERR, err
 	}
-	vpsInfo.allocationId = allocationId
-	vpsInfo.publicIp = publicIp
 
-	if nvpsInfo.allocationState == false {
+	result, err := c.GetDescribeInstance([]string{instanceId})
+	if err != nil {
+		return &vpsInfo, utils.DESC_INSTANCE_ERR, err
+	}
+
+	regionName := aws.StringValue(result.Reservations[0].Instances[0].Placement.AvailabilityZone)
+	vpsInfo.RegionName = regionName
+	vpsInfo.PrivateIp = aws.StringValue(result.Reservations[0].Instances[0].PrivateIpAddress)
+	vpsInfo.PublicIp = aws.StringValue(result.Reservations[0].Instances[0].PublicIpAddress)
+
+	if bAllocation {
+		publicIp, allocationId, err := c.AllocateAddresss(instanceId)
+		if err != nil {
+			return &vpsInfo, utils.ALLOCATION_ERR, err
+		}
+		vpsInfo.AllocationId = allocationId
+		vpsInfo.PublicIp = publicIp
+
 		_, err = c.AssociateAddresss(instanceId, allocationId)
 		if err != nil {
-			return &vpsInfo, err
+			return &vpsInfo, utils.ASSOCIATE_ERR, err
 		}
+		vpsInfo.AllocationState = true
 	}
-	vpsInfo.allocationState = true
 
-	volumeId := ""
-	if len(nvpsInfo.volumeId) == 0 {
-		volumeId, err = c.CreateVolumes(regionName, volumeSize)
+	if bVolume {
+		volumeId, err := c.CreateVolumes(regionName, "", volumeSize)
 		if err != nil {
-			return &vpsInfo, err
+			return &vpsInfo, utils.CREATE_VOLUME_ERR, err
 		}
-	} else {
-		volumeId = nvpsInfo.volumeId
-	}
-	vpsInfo.volumeId = volumeId
+		vpsInfo.VolumeId = volumeId
 
-	if nvpsInfo.volumeState == false {
-		retrys = 0
-		for { //循环
-			retrys++
-			if retrys > volume_retrys {
-				err = errors.New("volume timeout")
-				return &vpsInfo, err
-			}
-			vResult, err := c.GetDescribeVolumes([]string{volumeId})
-			if err == nil {
-				vState := aws.StringValue(vResult.Volumes[0].State)
-				if vState == "available" {
-					break
-				}
-			}
-			time.Sleep(time.Second)
-		}
-		_, err = c.AttachVolumes(instanceId, volumeId, device_name)
+		err = c.WaitUntilVolumeAvailables([]string{volumeId})
 		if err != nil {
-			return &vpsInfo, err
+			return &vpsInfo, utils.WAIT_VOLUME_AVAIL_ERR, err
+		}
+		_, err = c.AttachVolumes(instanceId, volumeId, mnhostTypes.DEVICE_NAME)
+		if err != nil {
+			return &vpsInfo, utils.ATTRACH_VOLUME_ERR, err
+		}
+		vpsInfo.VolumeState = true
+
+		err = VolumeMount(vpsInfo.PublicIp, vpsInfo.PrivateIp, mnhostTypes.SSH_PASSWORD)
+		if err != nil {
+			return &vpsInfo, utils.MOUNT_VOLUME_ERR, err
 		}
 	}
-	vpsInfo.volumeState = true
 
-	err = VolumeMount(vpsInfo.publicIp, ssh_password)
+	tvps := models.TVps{}
+	tvps.AllocationId = vpsInfo.AllocationId
+	tvps.InstanceId = vpsInfo.InstanceId
+	tvps.VolumeId = vpsInfo.VolumeId
+	tvps.ProviderName = mnhostTypes.PROVIDER_NAME
+	tvps.Cores = mnhostTypes.CORE_NUMS
+	tvps.Memory = mnhostTypes.MEMORY_SIZE
+	tvps.KeyPairName = mnhostTypes.KEY_PAIR_NAME
+	tvps.SecurityGroupName = mnhostTypes.GROUP_NAME
+	tvps.RegionName = vpsInfo.RegionName
+	tvps.PublicIp = vpsInfo.PublicIp
+	tvps.PrivateIp = vpsInfo.PrivateIp
+	tvps.ClusterName = clusterName
+	tvps.VpsRole = role
+	tvps.Status = "wait-data"
+	o := orm.NewOrm()
+	_, err = o.Insert(&tvps)
 	if err != nil {
-		return &vpsInfo, err
+		return &vpsInfo, utils.RECODE_INSERTERR, err
 	}
 
-	log.Println("new vps success")
+	log.Printf("success new vps %s\n", vpsInfo.InstanceId)
 
-	return &vpsInfo, nil
+	return &vpsInfo, utils.RECODE_OK, nil
 }
 
-func newNode(vpsId int64, coinName string, ipAddress string, password string, mnKey string) error {
-	log.Printf("new node from vpsid %d\n", vpsId)
-	var tcoin models.TCoin
+func DelVps(userId, instanceId string) (string, error) {
+	log.Printf("start del vps %s\n", instanceId)
+
+	var tvps models.TVps
 	o := orm.NewOrm()
-	qs := o.QueryTable("t_coin")
-	err := qs.Filter("name", coinName).One(&tcoin)
+	qs := o.QueryTable("t_vps")
+	err := qs.Filter("instanceId", instanceId).One(&tvps)
 	if err != nil {
-		return err
-	}
-	client := gossh.New(ipAddress, "root")
-	if client == nil {
-		return errors.New("client no connect")
+		return utils.RECODE_DATAERR, err
 	}
 
-	// my default agent authentication is used. use
-	client.SetPassword(ssh_password)
-
-	defer client.Close()
-
-	rpcPort, port, err := getRpcPort(vpsId)
+	c, err := uec2.NewEc2Client(mnhostTypes.ZONE_DEFAULT, mnhostTypes.AWS_ACCOUNT)
 	if err != nil {
-		return err
+		return utils.VPS_CONNECT_ERR, err
 	}
 
-	volumeName := "mn" + strconv.Itoa(rpcPort)
-	var rsp *gossh.Result
-	cmd := "docker volume inspect " + volumeName
-	rsp, err = sshCmd(client, cmd, 5)
+	_, err = c.TerminateInstance(tvps.InstanceId)
 	if err != nil {
-		cmd = "docker volume create --name=" + volumeName
-		rsp, err = sshCmd(client, cmd, 5)
+		log.Printf("term err:%+v\n", err)
+
+		return utils.TERMINATE_INSTANCE_ERR, err
+	}
+
+	err = c.WaitUntilInstanceTerminate([]string{tvps.InstanceId})
+	if err != nil {
+		return utils.WAIT_TERMINATE_INSTANCE_ERR, err
+	}
+
+	if len(tvps.VolumeId) != 0 {
+		_, err = c.DeleteVolumes(tvps.VolumeId)
 		if err != nil {
-			return err
-		}
-		time.Sleep(10 * time.Second)
-		cmd = "docker volume inspect " + volumeName
-		rsp, err = sshCmd(client, cmd, 5)
-		if err != nil {
-			return err
+			return utils.DELETE_VOLUME_ERR, err
 		}
 	}
 
-	var part []Volume
-	if err = json.Unmarshal([]byte(rsp.Stdout()), &part); err != nil {
-		return err
-	}
-	mountPoint := part[0].Mountpoint
-
-	coinPath := mountPoint + "/" + tcoin.Path
-	cmd = "cd " + coinPath
-	rsp, err = sshCmd(client, cmd, 5)
-	if err != nil {
-		cmd = "mkdir " + coinPath
-		_, err = sshCmd(client, cmd, 5)
+	if len(tvps.AllocationId) != 0 {
+		_, err = c.ReleaseAddresss(tvps.AllocationId)
 		if err != nil {
-			return err
+			return utils.RELEASE_ADDRESS_ERR, err
 		}
 	}
 
-	localFile := "/tmp/" + tcoin.Conf
-	err = WriteConf(localFile, ipAddress, mnKey)
+	o = orm.NewOrm()
+	_, err = o.Delete(&tvps)
 	if err != nil {
-		return err
+		return utils.RECODE_DELETEERR, err
 	}
 
-	err = UploadFile(ipAddress, "root", password, localFile, "/tmp/")
+	log.Printf("success del vps %s\n", instanceId)
+	return "", nil
+}
+
+func NewNode(orderId int64, clusterName string) (string, error) {
+	defer func() {
+		mutex.Unlock()
+	}()
+
+	log.Printf("start new node from orderid %d\n", orderId)
+	var torder models.TOrder
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_order")
+	err := qs.Filter("id", orderId).One(&torder)
 	if err != nil {
-		return err
+		return utils.RECODE_NODATA, err
 	}
 
-	cmd = "mv /tmp/" + tcoin.Conf + " " + coinPath
-	_, err = sshCmd(client, cmd, 5)
+	var tcoin models.TCoin
+	o = orm.NewOrm()
+	qs = o.QueryTable("t_coin")
+	err = qs.Filter("name", torder.Coinname).Filter("status", "Enabled").One(&tcoin)
 	if err != nil {
-		return err
+		return utils.RECODE_NODATA, err
 	}
 
-	cmd = "docker images | grep " + coinName
-	rsp, err = sshCmd(client, cmd, 5)
+	mutex.Lock()
+	rpcport, _, err := getRpcPort()
 	if err != nil {
-		localPath := tcoin.FilePath
-		baseFile := filepath.Base(localPath)
-		err = UploadFile(ipAddress, "root", password, localPath, "/tmp/")
-		if err != nil {
-			return err
+		return utils.PORT_ERR, err
+	}
+
+	/*publicIp, privateIp, err := common.GetVpsIp(clusterName)
+	if err != nil {
+		return utils.MANAGER_ERR, err
+	}
+
+	errcode, err := ReadyNodeData(torder.Coinname, rpcport, torder.Mnkey, publicIp, privateIp)
+	if err != nil {
+		return errcode, err
+	}
+
+	mc, _, err := common.DockerNewClient(publicIp, privateIp)
+	if err != nil {
+		return utils.DOCKER_CONNECT_ERR, err
+	}
+	defer mc.Close()
+
+	err = mc.ServiceCreateA(torder.Coinname, rpcport, tcoin.Docker)
+	if err != nil {
+		return utils.SERVICE_NEW_ERR, err
+	}*/
+
+	var tnode models.TNode
+	tnode.ClusterName = clusterName
+	tnode.CoinName = torder.Coinname
+	tnode.Port = rpcport
+	tnode.Userid = torder.Userid
+	tnode.Order = &torder
+	tnode.Status = "wait-data"
+	o = orm.NewOrm()
+	_, err = o.Insert(&tnode)
+	if err != nil {
+		return "", err
+	}
+
+	log.Printf("success new node from orderid %d\n", orderId)
+	return "", nil
+}
+
+func DelNode(nodeId int64, clusterName string) (string, error) {
+	defer func() {
+	}()
+	log.Printf("start del node from nodeId:%d\n", nodeId)
+
+	var tnode models.TNode
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_node")
+	err := qs.Filter("id", nodeId).One(&tnode)
+	if err != nil {
+		return utils.RECODE_NODATA, err
+	}
+
+	publicIp, privateIp, err := common.GetVpsIp(clusterName)
+	if err != nil {
+		return utils.MANAGER_ERR, err
+	}
+
+	mc, _, err := common.DockerNewClient(publicIp, privateIp)
+	if err != nil {
+		return utils.DOCKER_CONNECT_ERR, err
+	}
+	defer mc.Close()
+
+	nodeName := fmt.Sprintf("%s%d", tnode.CoinName, tnode.Port)
+	_, err = mc.ServiceInspectA(nodeName)
+	if err != nil {
+		bError := true
+		if strings.ContainsAny(err.Error(), "No such service") == true {
+			bError = false
 		}
-
-		cmd = "docker load  --input /tmp/" + baseFile
-		rsp, err = sshCmd(client, cmd, 5)
-		if err != nil {
-			return err
+		if bError {
+			return utils.SERVICE_REMOVE_ERR, err
 		}
-
-		cmd = "rm -rf /tmp/" + baseFile
-		rsp, err = sshCmd(client, cmd, 5)
+	} else {
+		err = mc.ServiceRemove(context.Background(), nodeName)
 		if err != nil {
-			return err
+			return utils.SERVICE_REMOVE_ERR, err
 		}
 	}
 
-	srpcPort := strconv.Itoa(rpcPort)
-	sport := strconv.Itoa(port)
-	cmd = "docker run -v " + volumeName + ":/" + s_workdir + " --name=" + volumeName + " -d -p " + sport + ":" + s_port + " -p " + srpcPort + ":" + s_rpcport + " " + tcoin.Docker
-	rsp, err = sshCmd(client, cmd, 5)
+	var tcoin models.TCoin
+	o = orm.NewOrm()
+	qs = o.QueryTable("t_coin")
+	err = qs.Filter("name", tnode.CoinName).Filter("port", tnode.Port).One(&tcoin)
 	if err != nil {
-		return err
+		log.Printf("******")
+		errcode, err := NodeRemoveData(tnode.CoinName, tnode.Port, publicIp, privateIp)
+		if err != nil {
+			log.Printf("remove data error:%s-%+v\n", errcode, err)
+			return errcode, err
+		}
 	}
-	log.Printf("new node from vpsid %d success\n", vpsId)
-	return nil
+
+	o = orm.NewOrm()
+	_, err = o.Delete(&tnode)
+	if err != nil {
+		return utils.RECODE_DELETEERR, err
+	}
+
+	log.Printf("success del node from orderid:%d\n", nodeId)
+
+	return utils.RECODE_OK, nil
 }
 
 func GetIpPermission() []*ec2.IpPermission {
@@ -1071,8 +898,24 @@ func GetIpPermission() []*ec2.IpPermission {
 			}),
 		(&ec2.IpPermission{}).
 			SetIpProtocol("tcp").
-			SetFromPort(port_from).
-			SetToPort(port_to).
+			SetFromPort(2375).
+			SetToPort(2375).
+			SetIpRanges([]*ec2.IpRange{
+				(&ec2.IpRange{}).
+					SetCidrIp("0.0.0.0/0"),
+			}),
+		(&ec2.IpPermission{}).
+			SetIpProtocol("tcp").
+			SetFromPort(2049).
+			SetToPort(2049).
+			SetIpRanges([]*ec2.IpRange{
+				(&ec2.IpRange{}).
+					SetCidrIp("0.0.0.0/0"),
+			}),
+		(&ec2.IpPermission{}).
+			SetIpProtocol("tcp").
+			SetFromPort(mnhostTypes.PORT_FROM).
+			SetToPort(mnhostTypes.PORT_TO).
 			SetIpRanges([]*ec2.IpRange{
 				(&ec2.IpRange{}).
 					SetCidrIp("0.0.0.0/0"),
@@ -1090,8 +933,8 @@ func SecurityGroupIsExist(groupName string, groupResult *ec2.DescribeSecurityGro
 	return ""
 }
 
-func UploadFile(ipAddress string, username string, password string, localFile string, remoteDir string) error {
-	client, err := ssh.NewClient(ipAddress, "22", username, password)
+func UploadFile(publicIp string, username string, password string, localFile string, remoteDir string) error {
+	client, err := ssh.NewClient(publicIp, "22", username, password)
 	if err != nil {
 		return err
 	}
@@ -1108,12 +951,12 @@ func WriteConf(confName, externIp, mnKey string) error {
 
 	cfg.Section("").Key("listen").SetValue("1")
 	cfg.Section("").Key("server").SetValue("1")
-	cfg.Section("").Key("rpcuser").SetValue(rpc_user)
-	cfg.Section("").Key("rpcpassword").SetValue(rpc_password)
+	cfg.Section("").Key("rpcuser").SetValue(mnhostTypes.RPC_USER)
+	cfg.Section("").Key("rpcpassword").SetValue(mnhostTypes.RPC_PASSWORD)
 	cfg.Section("").Key("rpcallowip").SetValue("1.2.3.4/0.0.0.0")
 	cfg.Section("").Key("rpcbind").SetValue("0.0.0.0")
-	cfg.Section("").Key("rpcport").SetValue(s_rpcport)
-	cfg.Section("").Key("port").SetValue(s_port)
+	cfg.Section("").Key("rpcport").SetValue(mnhostTypes.S_RPCPROT)
+	cfg.Section("").Key("port").SetValue(mnhostTypes.S_PORT)
 	cfg.Section("").Key("masternode").SetValue("1")
 	cfg.Section("").Key("masternodeblsprivkey").SetValue(mnKey)
 	cfg.Section("").Key("externalip").SetValue(externIp)
@@ -1123,14 +966,14 @@ func WriteConf(confName, externIp, mnKey string) error {
 	return nil
 }
 
-func getRpcPort(vpsId int64) (int, int, error) {
-	rpcport := port_from
+func getRpcPort() (int, int, error) {
+	rpcport := mnhostTypes.PORT_FROM
 	port := rpcport + 1
 
 	var tnodes []models.TNode
 	o := orm.NewOrm()
 	qs := o.QueryTable("t_node")
-	nums, err := qs.Filter("vps_id", vpsId).All(&tnodes)
+	nums, err := qs.All(&tnodes)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -1138,7 +981,7 @@ func getRpcPort(vpsId int64) (int, int, error) {
 		return rpcport, port, nil
 	}
 
-	for i := port_from; i < port_to; i = i + 2 {
+	for i := mnhostTypes.PORT_FROM; i < mnhostTypes.PORT_TO; i = i + 2 {
 		if portExist(i, &tnodes) == false {
 			return i, i + 1, nil
 		}
@@ -1173,65 +1016,62 @@ func sshCmd(client *gossh.Client, cmd string, fails int) (*gossh.Result, error) 
 	}
 }
 
-func VolumeMount(ipAddress, password string) error {
+func VolumeMount(publicIp, privateIp, password string) error {
 	log.Println("start mount")
 
-	client := gossh.New(ipAddress, "root")
+	client := common.SshNewClient(publicIp, privateIp, password)
 	if client == nil {
 		return errors.New("client no connect")
 	}
 
-	// my default agent authentication is used. use
-	client.SetPassword(password)
-
 	defer client.Close()
 
-	cmd := fmt.Sprintf("echo -e \"d\n1\nw\" | fdisk /dev/%s", device_name)
+	cmd := fmt.Sprintf("echo -e \"d\n1\nw\" | fdisk /dev/%s", mnhostTypes.DEVICE_NAME)
 	result, err := client.Execute(cmd)
 	/*if err != nil {
 		return err
 	}*/
 
-	cmd = fmt.Sprintf("echo -e \"n\np\n1\n\n\nw\" | fdisk /dev/%s", device_name)
+	cmd = fmt.Sprintf("echo -e \"n\np\n1\n\n\nw\" | fdisk /dev/%s", mnhostTypes.DEVICE_NAME)
 	result, err = client.Execute(cmd)
 	log.Printf("cmd:%s\n", cmd)
 	if err != nil {
 		return err
 	}
 
-	cmd = fmt.Sprintf("fdisk -l |grep %s", device_name1)
+	cmd = fmt.Sprintf("fdisk -l |grep %s", mnhostTypes.DEVICE_NAME1)
 	log.Printf("cmd:%s\n", cmd)
 	result, err = client.Execute(cmd)
 	if err != nil {
 		return err
 	}
 
-	cmd = fmt.Sprintf("file -s /dev/%s |grep ext4", device_name1)
+	cmd = fmt.Sprintf("file -s /dev/%s |grep ext4", mnhostTypes.DEVICE_NAME1)
 	log.Printf("cmd:%s\n", cmd)
 	result, err = client.Execute(cmd)
 	if err != nil {
-		cmd = fmt.Sprintf("mkfs -t ext4 /dev/%s", device_name1)
+		cmd = fmt.Sprintf("mkfs -t ext4 /dev/%s", mnhostTypes.DEVICE_NAME1)
 		result, err = client.Execute(cmd)
 		if err != nil {
 			return err
 		}
 	}
 
-	cmd = fmt.Sprintf("mkdir -p %s", mount_point)
+	cmd = fmt.Sprintf("mkdir -p %s", mnhostTypes.MOUNT_POINT)
 	log.Printf("cmd:%s\n", cmd)
 	result, err = client.Execute(cmd)
 	if err != nil {
 		return err
 	}
 
-	cmd = fmt.Sprintf("mount /dev/%s %s", device_name1, mount_point)
+	cmd = fmt.Sprintf("mount /dev/%s %s", mnhostTypes.DEVICE_NAME1, mnhostTypes.MOUNT_POINT)
 	log.Printf("cmd:%s\n", cmd)
 	result, err = client.Execute(cmd)
 	if err != nil {
 		return err
 	}
 
-	cmd = fmt.Sprintf("df -h |grep %s", device_name1)
+	cmd = fmt.Sprintf("df -h |grep %s", mnhostTypes.DEVICE_NAME1)
 	log.Printf("cmd:%s\n", cmd)
 	result, err = client.Execute(cmd)
 	if err != nil {
@@ -1245,28 +1085,289 @@ func VolumeMount(ipAddress, password string) error {
 func Vps2PBVps(u *models.TVps) vps.MVps {
 	return vps.MVps{
 		Id:                strconv.FormatInt(u.Id, 10),
+		ClusterName:       u.ClusterName,
 		ProviderName:      u.ProviderName,
 		Cores:             strconv.Itoa(u.Cores),
 		Memory:            strconv.Itoa(u.Memory),
-		MaxNodes:          strconv.Itoa(u.MaxNodes),
-		UsableNodes:       strconv.Itoa(u.UsableNodes),
 		RegionName:        u.RegionName,
 		InstanceId:        u.InstanceId,
 		VolumeId:          u.VolumeId,
 		SecurityGroupName: u.SecurityGroupName,
 		KeyPairName:       u.KeyPairName,
-		AllocateId:        u.AllocateId,
-		IpAddress:         u.IpAddress,
+		AllocationId:      u.AllocationId,
+		PublicIp:          u.PublicIp,
+		PrivateIp:         u.PrivateIp,
 	}
 }
 
 func Node2PBNode(u *models.TNode) vps.Node {
 	return vps.Node{
-		Id:       strconv.FormatInt(u.Id, 10),
-		UserId:   strconv.FormatInt(u.Userid, 10),
-		VpsId:    strconv.FormatInt(u.Vps.Id, 10),
-		OrderId:  strconv.FormatInt(u.Order.Id, 10),
-		CoinName: u.CoinName,
-		Port:     strconv.Itoa(u.Port),
+		Id:          strconv.FormatInt(u.Id, 10),
+		UserId:      strconv.FormatInt(u.Userid, 10),
+		OrderId:     strconv.FormatInt(u.Order.Id, 10),
+		ClusterName: u.ClusterName,
+		CoinName:    u.CoinName,
+		Port:        strconv.Itoa(u.Port),
 	}
+}
+
+func Init(clusterName string) error {
+	log.Printf("start init %s\n", clusterName)
+
+	var tvpss []models.TVps
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_vps")
+	nums, err := qs.Filter("clusterName", clusterName).Filter("vps_role", mnhostTypes.ROLE_MANAGER).All(&tvpss)
+	if err != nil {
+		log.Fatalf("init: query db tvps error:%+v!\n", err)
+		return err
+	}
+
+	for _, tvps := range tvpss {
+		c, err := uec2.NewEc2Client(mnhostTypes.ZONE_DEFAULT, mnhostTypes.AWS_ACCOUNT)
+		if err != nil {
+			log.Fatalf("init: client error:%+v!\n", err)
+			return err
+		}
+		result, err := c.GetDescribeInstance([]string{tvps.InstanceId})
+		if err != nil {
+			log.Fatalf("init: desc instance error:%+v!\n", err)
+			return err
+		}
+		tvps.PrivateIp = aws.StringValue(result.Reservations[0].Instances[0].PrivateIpAddress)
+		tvps.PublicIp = aws.StringValue(result.Reservations[0].Instances[0].PublicIpAddress)
+		//o = orm.NewOrm()
+		_, err = o.Update(&tvps)
+		if err != nil {
+			log.Fatalf("init: update db tvps :%+v!\n", err)
+			return err
+		}
+
+		/*err = EfsMount(tvps.PublicIp, tvps.PrivateIp, mnhostTypes.SSH_PASSWORD)
+		if err != nil {
+			log.Fatalf("init: mount efs :%+v!\n", err)
+			return err
+		}*/
+
+	}
+
+	if nums < mnhostTypes.INIT_MANAGER_NUMS {
+		for i := nums; i < mnhostTypes.INIT_MANAGER_NUMS; i++ {
+			err = InitNewVps(clusterName)
+			if err != nil {
+				log.Fatalf("init: new vps error:%+v!\n", err)
+				return err
+			}
+		}
+	}
+
+	/*err = EfsMount(publicIp, privateIp, SSH_PASSWORD)
+	if err != nil {
+		return err
+	}
+
+	c, _, err := common.DockerNewClient(publicIp, privateIp)
+	if err != nil {
+		return err
+	}
+	c.Close()
+
+	_, _, err = c.SwarmInspectA()
+	if err != nil {
+		_, err = c.SwarmInitA(publicIp, privateIp)
+		if err != nil {
+			return err
+		}
+	}
+
+	o = orm.NewOrm()
+	tvps.Status = "leader"
+	_, err = o.Update(&tvps)
+	if err != nil {
+		return err
+	}*/
+
+	log.Printf("success start init %s\n", clusterName)
+	return nil
+}
+
+func InitNewVps(clusterName string) error {
+	role := mnhostTypes.ROLE_MANAGER
+	volumeSize := int64(0)
+	bAllocation := false
+	bVolume := false
+
+	mpublicIp := ""
+	mprivateIp := ""
+
+	var tvpss []models.TVps
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_vps")
+	nums, err := qs.Filter("clusterName", clusterName).Filter("vps_role", mnhostTypes.ROLE_MANAGER).All(&tvpss)
+	if err != nil {
+		return err
+	}
+
+	if nums > 0 {
+		mpublicIp, mprivateIp, err = common.GetVpsIp("cluster1")
+		if err != nil {
+			return err
+		}
+	}
+
+	vpsInfo, errcode, err := NewVps(mnhostTypes.SYSTEM_IMAGE, mnhostTypes.ZONE_DEFAULT, mnhostTypes.INSTANCE_TYPE_DEFAULT, clusterName, role, volumeSize, bAllocation, bVolume)
+	if err != nil {
+		log.Panicf("init: new vps error:%s!\n", errcode)
+		return err
+	}
+
+	if nums == 0 {
+		mpublicIp = vpsInfo.PublicIp
+		mprivateIp = vpsInfo.PrivateIp
+	}
+
+	err = EfsMount(vpsInfo.PublicIp, vpsInfo.PrivateIp, mnhostTypes.SSH_PASSWORD)
+	if err != nil {
+		return err
+	}
+
+	mc, _, err := common.DockerNewClient(mpublicIp, mprivateIp)
+	if err != nil {
+		return err
+	}
+	defer mc.Close()
+
+	managerToken, _, err := mc.SwarmInspectA()
+	if err != nil {
+		_, err = mc.SwarmInitA(mpublicIp, mprivateIp, false)
+		if err != nil {
+			return err
+		}
+	} else {
+		c, _, err := common.DockerNewClient(vpsInfo.PublicIp, vpsInfo.PrivateIp)
+		if err != nil {
+			return err
+		}
+		defer c.Close()
+
+		err = c.SwarmJoinA(vpsInfo.PrivateIp, mprivateIp, managerToken)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func EfsMount(publicIp, privateIp, password string) error {
+	ipAddress := publicIp
+	if mnhostTypes.PUBLIC_IP_ENABLED == 0 {
+		ipAddress = privateIp
+	}
+	log.Printf("start efs mount %s\n", ipAddress)
+
+	client := common.SshNewClient(publicIp, privateIp, password)
+	if client == nil {
+		return errors.New("client no connect")
+	}
+
+	defer client.Close()
+
+	/*cmd := "apt-get -y install nfs-common"
+	fmt.Printf("cmd:%s\n", cmd)
+	_, err := client.Execute(cmd)
+	if err != nil {
+		return err
+	}*/
+
+	cmd := fmt.Sprintf("mkdir -p %s", mnhostTypes.NFS_PATH)
+	fmt.Printf("cmd:%s\n", cmd)
+	_, err := client.Execute(cmd)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	cmd = fmt.Sprintf("mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 %s:/ %s", mnhostTypes.NFS_HOST, mnhostTypes.NFS_PATH)
+	fmt.Printf("cmd:%s\n", cmd)
+	_, err = client.Execute(cmd)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	cmd = fmt.Sprintf("chmod 777 -R %s", mnhostTypes.NFS_PATH)
+	fmt.Printf("cmd:%s\n", cmd)
+	_, err = client.Execute(cmd)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	log.Println("success efs mount ")
+	return nil
+}
+
+/*func ReadyNodeData(coinName string, rpcport int, mnKey, publicIp, privateIp string) (string, error) {
+	log.Printf("start ready data %s%d\n", coinName, rpcport)
+
+	var tcoin models.TCoin
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_coin")
+	err := qs.Filter("name", coinName).Filter("status", "Enabled").One(&tcoin)
+	if err != nil {
+		return utils.COIN_ENABLED_ERR, err
+	}
+
+	client := common.SshNewClient(publicIp, privateIp, mnhostTypes.SSH_PASSWORD)
+	if client == nil {
+		return "", errors.New("client no connect")
+	}
+	defer client.Close()
+
+	destPath := fmt.Sprintf("%s/%s/%s%d", mnhostTypes.NFS_PATH, coinName, mnhostTypes.NODE_PREFIX, rpcport)
+	cmd := fmt.Sprintf("mkdir -p %s", destPath)
+	fmt.Printf("cmd:%s\n", cmd)
+	_, err = client.Execute(cmd)
+	if err == nil {
+		return "", err
+	}
+
+	cmd = fmt.Sprintf("chmod 777 -R %s", destPath)
+	fmt.Printf("cmd:%s\n", cmd)
+	_, err = client.Execute(cmd)
+	if err != nil {
+		return "", err
+	}
+
+	log.Printf("success ready data %s%d\n", coinName, rpcport)
+	return "", nil
+}*/
+
+func NodeRemoveData(coinName string, rpcport int, publicIp, privateIp string) (string, error) {
+	log.Printf("start remove data %s%d\n", coinName, rpcport)
+
+	client := common.SshNewClient(publicIp, privateIp, mnhostTypes.SSH_PASSWORD)
+	if client == nil {
+		return "", errors.New("ssh client no connect")
+	}
+	defer client.Close()
+
+	retrys := 0
+	for {
+		cmd := fmt.Sprintf("rm -rf %s/%s/%s%d", mnhostTypes.NFS_PATH, coinName, mnhostTypes.NODE_PREFIX, rpcport)
+		fmt.Printf("cmd:%s\n", cmd)
+		_, err := client.Execute(cmd)
+		if err == nil {
+			log.Printf("success remove data %s%d\n", coinName, rpcport)
+			return "", nil
+		}
+
+		retrys++
+		if retrys >= 5 {
+			break
+		}
+
+		time.Sleep(time.Second * 5)
+	}
+	return "", errors.New("remove data timeout")
 }

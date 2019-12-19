@@ -3,7 +3,7 @@ syntax = "proto3";
 package mnmsg;
 
 message MnMsg {
-	int64 id = 1;
+	string msgId = 1;
 }
 
 message MnErrMsg {
