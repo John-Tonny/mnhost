@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	json "github.com/json-iterator/go"
+	//json "github.com/json-iterator/go"
 
 	"github.com/John-Tonny/mnhost/common"
 	"github.com/John-Tonny/mnhost/conf"
@@ -28,16 +28,17 @@ func main() {
 	// 创建 user-service 微服务的客户端
 	client := pb.NewVpsService(serviceName, srv.Client())
 
-	resp, err := client.DelNode(context.Background(), &pb.Request{
-		Id: 1,
+	resp, err := client.RemoveVps(context.Background(), &pb.Request{
+		Id: "i-054d68aab892cc420",
 	})
 	if err != nil {
 		log.Printf("del node error: %v", err)
 	} else {
-		var msg interface{}
+		/*var msg interface{}
 		if err := json.Unmarshal(resp.Mix, &msg); err != nil {
 			log.Println(err)
 		}
-		log.Println("del node: ", msg)
+		log.Println("del node: ", msg)*/
+		log.Printf("del vps:%+v\n", resp)
 	}
 }

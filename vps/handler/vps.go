@@ -1123,6 +1123,44 @@ func Init(clusterName string) error {
 		return err
 	}
 
+	if nums == 0 {
+		c, err := uec2.NewEc2Client(mnhostTypes.ZONE_DEFAULT, mnhostTypes.AWS_ACCOUNT)
+		if err != nil {
+			log.Fatalf("init: client error:%+v!\n", err)
+			return err
+		}
+		results, err := c.GetDescribeInstance([]string{})
+		if err != nil {
+			log.Fatalf("init: desc instance error:%+v!\n", err)
+			return err
+		}
+
+		for _, result := range results.Reservations {
+			nums++
+			log.Printf("%+v\n", result)
+			tvps := models.TVps{}
+			tvps.AllocationId = ""
+			tvps.InstanceId = aws.StringValue(result.Instances[0].InstanceId)
+			tvps.VolumeId = ""
+			tvps.ProviderName = mnhostTypes.PROVIDER_NAME
+			tvps.Cores = mnhostTypes.CORE_NUMS
+			tvps.Memory = mnhostTypes.MEMORY_SIZE
+			tvps.KeyPairName = mnhostTypes.KEY_PAIR_NAME
+			tvps.SecurityGroupName = mnhostTypes.GROUP_NAME
+			tvps.RegionName = aws.StringValue(result.Instances[0].Placement.AvailabilityZone)
+			tvps.PrivateIp = aws.StringValue(result.Instances[0].PrivateIpAddress)
+			tvps.PublicIp = aws.StringValue(result.Instances[0].PublicIpAddress)
+			tvps.ClusterName = "cluster1"
+			tvps.VpsRole = mnhostTypes.ROLE_MANAGER
+			tvps.Status = "wait-data"
+			_, err = o.Insert(&tvps)
+			if err != nil {
+				log.Fatalf("init: insert db tvps :%+v!\n", err)
+				return err
+			}
+		}
+	}
+
 	for _, tvps := range tvpss {
 		c, err := uec2.NewEc2Client(mnhostTypes.ZONE_DEFAULT, mnhostTypes.AWS_ACCOUNT)
 		if err != nil {
@@ -1143,12 +1181,11 @@ func Init(clusterName string) error {
 			return err
 		}
 
-		/*err = EfsMount(tvps.PublicIp, tvps.PrivateIp, mnhostTypes.SSH_PASSWORD)
+		err = EfsMount(tvps.PublicIp, tvps.PrivateIp, mnhostTypes.SSH_PASSWORD)
 		if err != nil {
 			log.Fatalf("init: mount efs :%+v!\n", err)
 			return err
-		}*/
-
+		}
 	}
 
 	if nums < mnhostTypes.INIT_MANAGER_NUMS {

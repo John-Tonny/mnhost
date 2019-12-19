@@ -89,6 +89,7 @@ func (s *VpsAPIHandler) ExpandVolume(c *gin.Context) {
 func (s *VpsAPIHandler) GetAllVps(c *gin.Context) {
 	log.Printf("start get all vps")
 	vps := vpsPb.Request{}
+
 	if err := c.ShouldBindJSON(&vps); err != nil {
 		log.Println(err)
 		c.JSON(http.StatusOK, gin.H{"status": "err", "errmsg": err})
