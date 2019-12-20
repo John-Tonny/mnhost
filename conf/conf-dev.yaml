@@ -29,15 +29,15 @@ DB:
     DBName: mnhosted
     Host: 127.0.0.1
     Port: 27017
-    PW: vpub999000
-    User: root
+    PW: 123456
+    User: mnhosted
   user:
     DriverName: mysql
     DBName: mnhosted
     Host: 127.0.0.1
     Port: 3306
-    PW: vpub999000
-    User: root
+    PW: 123456
+    User: mnhosted
   vps:
     DriverName: mysql
     DBName: mnhosted
