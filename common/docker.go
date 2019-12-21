@@ -86,7 +86,7 @@ func (c *DockerClient) SwarmJoinA(advertiseAddr, remoteAddrs, token string) erro
 	return nil
 }
 
-func (c *DockerClient) ServiceCreateA(coinName string, rpcport int, dockerId) error {
+func (c *DockerClient) ServiceCreateA(coinName string, rpcport int, dockerId string) error {
 	placement := fmt.Sprintf("node.hostname==%s", "ip-172-31-47-252")
 	replicas := uint64(1)
 	delay := time.Duration(10000000000)
