@@ -1,27 +1,27 @@
 package common
 
-
 import (
 	"io"
 	"time"
 
+	"github.com/micro/go-log"
 	"github.com/opentracing/opentracing-go"
-	"github.com/uber/jaeger-lib/metrics"
 	"github.com/uber/jaeger-client-go"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
-	"github.com/micro/go-log"
+	"github.com/uber/jaeger-lib/metrics"
 )
 
 func NewJaegerTracer(serviceName, addr string) (opentracing.Tracer, io.Closer, error) {
 	// Sample configuration for testing. Use constant sampling to sample every trace
 	// and enable LogSpan to log every span via configured Logger.
+
 	cfg := jaegercfg.Configuration{
 		Sampler: &jaegercfg.SamplerConfig{
 			Type:  jaeger.SamplerTypeConst,
 			Param: 1,
 		},
 		Reporter: &jaegercfg.ReporterConfig{
-			LogSpans: true,
+			LogSpans:            true,
 			BufferFlushInterval: 1 * time.Second,
 		},
 	}

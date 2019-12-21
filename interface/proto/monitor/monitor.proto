@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package monitor;
+
+service Monitor {
+	rpc GetStatus(Request) returns (Response) {}	
+	rpc StartMonitor(Request) returns (Response) {}
+	rpc StopMonitor(Request) returns (Response) {}
+	rpc UpdateService(UpdateRequest) returns (Response){}
+}
+
+message UpdateRequest {
+	string coinName = 1;
+	string dockerName = 2;
+}
+
+message Request {
+	string id = 1;
+}
+
+message Response {
+	string errno = 1;
+	string errmsg = 2;
+	bytes mix = 3;	
+}

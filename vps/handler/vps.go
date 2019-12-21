@@ -355,7 +355,7 @@ func (e *Vps) processCreateVps(clusterName, role string, volumeSize int64) error
 		e.pubErrMsg("", "newvps", errcode, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
 		return nil
 	}
-	err = EfsMount(vpsInfo.PublicIp, vpsInfo.PrivateIp, mnhostTypes.SSH_PASSWORD)
+	err = common.EfsMount(vpsInfo.PublicIp, vpsInfo.PrivateIp, mnhostTypes.SSH_PASSWORD)
 	if err != nil {
 		e.pubErrMsg("", "newvps", utils.EFS_MOUNT_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
 		return nil
@@ -684,7 +684,7 @@ func NewVps(imageId, zone, instanceType, clusterName, role string, volumeSize in
 	tvps.PrivateIp = vpsInfo.PrivateIp
 	tvps.ClusterName = clusterName
 	tvps.VpsRole = role
-	tvps.Status = "wait-data"
+	tvps.Status = ""
 	o := orm.NewOrm()
 	_, err = o.Insert(&tvps)
 	if err != nil {
@@ -1181,11 +1181,11 @@ func Init(clusterName string) error {
 			return err
 		}
 
-		err = EfsMount(tvps.PublicIp, tvps.PrivateIp, mnhostTypes.SSH_PASSWORD)
+		/*err = EfsMount(tvps.PublicIp, tvps.PrivateIp, mnhostTypes.SSH_PASSWORD)
 		if err != nil {
 			log.Fatalf("init: mount efs :%+v!\n", err)
 			return err
-		}
+		}*/
 	}
 
 	if nums < mnhostTypes.INIT_MANAGER_NUMS {
@@ -1263,7 +1263,7 @@ func InitNewVps(clusterName string) error {
 		mprivateIp = vpsInfo.PrivateIp
 	}
 
-	err = EfsMount(vpsInfo.PublicIp, vpsInfo.PrivateIp, mnhostTypes.SSH_PASSWORD)
+	err = common.EfsMount(vpsInfo.PublicIp, vpsInfo.PrivateIp, mnhostTypes.SSH_PASSWORD)
 	if err != nil {
 		return err
 	}
@@ -1295,7 +1295,7 @@ func InitNewVps(clusterName string) error {
 	return nil
 }
 
-func EfsMount(publicIp, privateIp, password string) error {
+/*func EfsMount(publicIp, privateIp, password string) error {
 	ipAddress := publicIp
 	if mnhostTypes.PUBLIC_IP_ENABLED == 0 {
 		ipAddress = privateIp
@@ -1309,12 +1309,12 @@ func EfsMount(publicIp, privateIp, password string) error {
 
 	defer client.Close()
 
-	/*cmd := "apt-get -y install nfs-common"
+	cmd := "apt-get -y install nfs-common"
 	fmt.Printf("cmd:%s\n", cmd)
 	_, err := client.Execute(cmd)
 	if err != nil {
 		return err
-	}*/
+	}
 
 	cmd := fmt.Sprintf("mkdir -p %s", mnhostTypes.NFS_PATH)
 	fmt.Printf("cmd:%s\n", cmd)
@@ -1342,7 +1342,7 @@ func EfsMount(publicIp, privateIp, password string) error {
 
 	log.Println("success efs mount ")
 	return nil
-}
+}*/
 
 /*func ReadyNodeData(coinName string, rpcport int, mnKey, publicIp, privateIp string) (string, error) {
 	log.Printf("start ready data %s%d\n", coinName, rpcport)
