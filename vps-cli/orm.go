@@ -21,10 +21,10 @@ func main() {
 	}
 	log.Printf("node:%v\n", tnode)
 
-	var tvps models.TVps
+	/*var tvps models.TVps
 	o = orm.NewOrm()
 	qs = o.QueryTable("t_vps")
-	err = qs.Filter("usable_nodes__gt", 1).One(&tvps)
+	err = qs.One(&tvps)
 	if err != nil {
 		log.Printf("err:%v\n", err)
 	}
@@ -74,27 +74,37 @@ func main() {
 	_, err = o.Insert(&coin)
 	if err != nil {
 		log.Fatalf("err:%v\n", err)
-	}
-	/*
-		tnvps := models.TVps{}
-		tnvps.AllocateId = "allocateid"
-		tnvps.InstanceId = "instanceId"
-		tnvps.VolumeId = "volumeId"
-		tnvps.ProviderName = "provider_name"
-		tnvps.Cores = 1
-		tnvps.Memory = 1
-		tnvps.KeyPairName = "key_pair_name"
-		tnvps.MaxNodes = 3
-		tnvps.UsableNodes = 3
-		tnvps.SecurityGroupName = "group_name"
-		tnvps.RegionName = "regionName"
-		tnvps.IpAddress = "publicIp"
-		o = orm.NewOrm()
-		_, err = o.Insert(&tnvps)
-		if err != nil {
-			log.Fatalf("err:%v\n", err)
-		}
-	*/
+	}*/
+
+	log.Println("1")
+
+	o := orm.NewOrm()
+	var r RawSeter
+	r = o.Raw("UPDATE tvps SET status = ? WHERE name = ?", "testing", "slene")
+
+	/*tnvps := models.TVps{}
+	log.Println("2")
+	tnvps.AllocateId = "allocateid"
+	log.Println("3")
+	tnvps.InstanceId = "instanceId1"
+	//tnvps.VolumeId = "volumeId"
+	tnvps.ProviderName = "provider_name"
+	tnvps.Cores = 1
+	tnvps.Memory = 1
+	tnvps.KeyPairName = "key_pair_name"
+	tnvps.SecurityGroupName = "group_name"
+	tnvps.RegionName = "regionName"
+	tnvps.PublicIp = "publicIp"
+	tnvps.PrivateIp = "privateIp"
+	tnvps.ClusterName = "cluster1"
+	tnvps.VpsRole = "manager"
+	tnvps.Status = "wait-data"
+
+	o = orm.NewOrm()
+	_, err = o.Insert(&tnvps)
+	if err != nil {
+		log.Fatalf("err:%v\n", err)
+	}*/
 
 	/*
 		var order models.OrderNode

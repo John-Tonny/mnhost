@@ -522,6 +522,7 @@ func NodeReadyConfig(publicIp, privateIp, coinName string, rpcPort int, wg *sync
 		ExternalIp: publicIp,
 		FileName:   fileName,
 	}
+	log.Printf("conf:%+v\n", conf)
 	resp, _, err1 := request.Post(url).
 		SendStruct(conf).
 		EndStruct(&basicResponse)
@@ -580,16 +581,15 @@ func NodeReadyConfig(publicIp, privateIp, coinName string, rpcPort int, wg *sync
 		if !strings.ContainsAny(err.Error(), errInfo) == true {
 			return err
 		}
+	} else {
+		time.Sleep(time.Second * 70)
 	}
 
-	time.Sleep(time.Second * 70)
-
-	log.Printf("***create service %s%d\n", coinName, rpcPort)
-	err = mc.ServiceCreateA(coinName, rpcPort, tcoin.Docker)
-	if err != nil {
+	mc.ServiceCreateA(coinName, rpcPort, tcoin.Docker, tnode.PrivateIp)
+	/*if err != nil {
 		log.Printf("ppp:%+v\n", err)
 		return err
-	}
+	}*/
 
 	o = orm.NewOrm()
 	tnode.Status = "finish"

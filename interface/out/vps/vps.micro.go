@@ -38,6 +38,7 @@ type VpsService interface {
 	RemoveVps(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error)
 	CreateNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error)
 	RemoveNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error)
+	UpdateNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error)
 	ExpandVolume(ctx context.Context, in *VolumeRequest, opts ...client.CallOption) (*Response, error)
 	GetAllVps(ctx context.Context, in *Request, opts ...client.CallOption) (*VpsResponse, error)
 	GetAllNodeFromUser(ctx context.Context, in *Request, opts ...client.CallOption) (*NodeResponse, error)
@@ -101,6 +102,16 @@ func (c *vpsService) RemoveNode(ctx context.Context, in *Request, opts ...client
 	return out, nil
 }
 
+func (c *vpsService) UpdateNode(ctx context.Context, in *Request, opts ...client.CallOption) (*Response, error) {
+	req := c.c.NewRequest(c.name, "Vps.UpdateNode", in)
+	out := new(Response)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *vpsService) ExpandVolume(ctx context.Context, in *VolumeRequest, opts ...client.CallOption) (*Response, error) {
 	req := c.c.NewRequest(c.name, "Vps.ExpandVolume", in)
 	out := new(Response)
@@ -138,6 +149,7 @@ type VpsHandler interface {
 	RemoveVps(context.Context, *Request, *Response) error
 	CreateNode(context.Context, *Request, *Response) error
 	RemoveNode(context.Context, *Request, *Response) error
+	UpdateNode(context.Context, *Request, *Response) error
 	ExpandVolume(context.Context, *VolumeRequest, *Response) error
 	GetAllVps(context.Context, *Request, *VpsResponse) error
 	GetAllNodeFromUser(context.Context, *Request, *NodeResponse) error
@@ -149,6 +161,7 @@ func RegisterVpsHandler(s server.Server, hdlr VpsHandler, opts ...server.Handler
 		RemoveVps(ctx context.Context, in *Request, out *Response) error
 		CreateNode(ctx context.Context, in *Request, out *Response) error
 		RemoveNode(ctx context.Context, in *Request, out *Response) error
+		UpdateNode(ctx context.Context, in *Request, out *Response) error
 		ExpandVolume(ctx context.Context, in *VolumeRequest, out *Response) error
 		GetAllVps(ctx context.Context, in *Request, out *VpsResponse) error
 		GetAllNodeFromUser(ctx context.Context, in *Request, out *NodeResponse) error
@@ -178,6 +191,10 @@ func (h *vpsHandler) CreateNode(ctx context.Context, in *Request, out *Response)
 
 func (h *vpsHandler) RemoveNode(ctx context.Context, in *Request, out *Response) error {
 	return h.VpsHandler.RemoveNode(ctx, in, out)
+}
+
+func (h *vpsHandler) UpdateNode(ctx context.Context, in *Request, out *Response) error {
+	return h.VpsHandler.UpdateNode(ctx, in, out)
 }
 
 func (h *vpsHandler) ExpandVolume(ctx context.Context, in *VolumeRequest, out *Response) error {

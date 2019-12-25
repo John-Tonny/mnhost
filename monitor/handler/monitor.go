@@ -412,7 +412,7 @@ func MonitorService() {
 			if tnode.Status == "wait-data" {
 				common.NodeReadyData(mpublicIp, mprivateIp, tnode.CoinName, tnode.Port, &wg)
 			} else {
-				ProcessService(tnode.ClusterName, tnode.CoinName, tnode.Status, mpublicIp, mprivateIp, tnode.Port, mc, &wg)
+				ProcessService(tnode.ClusterName, tnode.CoinName, tnode.Status, tnode.PrivateIp, mpublicIp, mprivateIp, tnode.Port, mc, &wg)
 			}
 		}
 		wg.Wait()
@@ -437,19 +437,22 @@ func MonitorApp() {
 			DelayTime(startTime, 20, "monitor app time")
 		}
 
-		mpublicIp, mprivateIp, err := common.GetVpsIp("cluster1")
+		/*mpublicIp, mprivateIp, err := common.GetVpsIp("cluster1")
 		if err != nil {
 			DelayTime(startTime, 20, "monitor app time")
-		}
+		}*/
 
 		var wg sync.WaitGroup
 		wg.Add(int(nums))
+		aaa := 0
+		log.Printf("node nums:%d\n", nums)
 		for _, tnode := range tnodes {
-			log.Printf("aaaa:%+v\n", tnode)
-			if tnode.PublicIp == "" || tnode.PrivateIp == "" {
-				common.GetNodeIp(mpublicIp, mprivateIp, tnode.CoinName, tnode.Port, &wg)
-			} else if tnode.Status == "wait-conf" {
-				common.NodeReadyConfig(mpublicIp, mprivateIp, tnode.CoinName, tnode.Port, &wg)
+			aaa++
+			log.Printf("***aaaa:%d--%+v\n", aaa, tnode)
+			//if tnode.PublicIp == "" || tnode.PrivateIp == "" {
+			//	common.GetNodeIp(mpublicIp, mprivateIp, tnode.CoinName, tnode.Port, &wg)
+			if tnode.Status == "wait-conf" {
+				common.NodeReadyConfig(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.Port, &wg)
 			} else if tnode.Status == "finish" {
 				GetMasterNodeStatus(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.Port, &wg)
 			} else {
@@ -515,7 +518,7 @@ func ProcessNode1(nodeMap mnhostTypes.NodeMap, managerPublicIp, managerPrivateIp
 	return nil
 }
 
-func ProcessService(clusterName, coinName, status, managerPublicIp, managerPrivateIp string, rpcPort int, mc *common.DockerClient, wg *sync.WaitGroup) error {
+func ProcessService(clusterName, coinName, status, privateIp, managerPublicIp, managerPrivateIp string, rpcPort int, mc *common.DockerClient, wg *sync.WaitGroup) error {
 	defer func() {
 		wg.Done()
 	}()
@@ -530,7 +533,7 @@ func ProcessService(clusterName, coinName, status, managerPublicIp, managerPriva
 		}
 		serviceRetrys.Retrys[nodeName].Nums++
 		log.Printf("***serviceRetrys:%s-%d\n", nodeName, serviceRetrys.Retrys[nodeName].Nums)
-		if serviceRetrys.Retrys[nodeName].Nums < 3 {
+		if serviceRetrys.Retrys[nodeName].Nums <= 3 {
 			return nil
 		}
 		delete(serviceRetrys.Retrys, nodeName)
@@ -541,7 +544,7 @@ func ProcessService(clusterName, coinName, status, managerPublicIp, managerPriva
 			return err
 		}
 		log.Printf("start service repaire, ip:%s-%s\n", managerPublicIp, managerPrivateIp)
-		err = mc.ServiceCreateA(coinName, rpcPort, dockerId)
+		err = mc.ServiceCreateA(coinName, rpcPort, dockerId, privateIp)
 		if err != nil {
 			return err
 		}
@@ -557,8 +560,8 @@ func ProcessService(clusterName, coinName, status, managerPublicIp, managerPriva
 		mutex.Lock()
 		defer mutex.Unlock()
 		o = orm.NewOrm()
-		tnode.PublicIp = ""
-		tnode.PrivateIp = ""
+		//tnode.PublicIp = ""
+		//tnode.PrivateIp = ""
 		tnode.State = ""
 		tnode.Status = "wait-conf"
 		_, err = o.Update(&tnode)
@@ -579,7 +582,7 @@ func ProcessService(clusterName, coinName, status, managerPublicIp, managerPriva
 	return nil
 }
 
-func ProcessService1(serviceMap mnhostTypes.ServiceMap, managerPublicIp, managerPrivateIp string) error {
+/*func ProcessService1(serviceMap mnhostTypes.ServiceMap, managerPublicIp, managerPrivateIp string) error {
 	bFirst := false
 	for _, serviceInfo := range serviceMap.Service {
 		log.Printf("ip:%s-%s\n", managerPublicIp, managerPrivateIp)
@@ -604,7 +607,7 @@ func ProcessService1(serviceMap mnhostTypes.ServiceMap, managerPublicIp, manager
 	}
 	log.Printf("success service repaire")
 	return nil
-}
+}*/
 
 func ProcessApp() error {
 
@@ -855,8 +858,8 @@ func MasterNodeRefused(coinName string, rpcPort int) error {
 	}
 	mutex.Lock()
 	defer mutex.Unlock()
-	tnode.PublicIp = ""
-	tnode.PrivateIp = ""
+	//tnode.PublicIp = ""
+	//tnode.PrivateIp = ""
 	tnode.Status = "wait-conf"
 	_, err = o.Update(&tnode)
 	if err != nil {

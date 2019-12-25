@@ -14,6 +14,13 @@ const serviceName = "vps"
 func main() {
 	log.Println("vps start")
 
+	pub, pri, err := handler.AllocateVps()
+	if err != nil {
+		log.Println(err)
+	} else {
+		log.Printf("****ip:%s-%s", pub, pri)
+	}
+
 	handler.Init("cluster1")
 
 	srv := common.GetMicroServer(serviceName)

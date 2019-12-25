@@ -64,6 +64,28 @@ func (s *VpsAPIHandler) DelNode(c *gin.Context) {
 	})
 }
 
+func (s *VpsAPIHandler) UpdateNode(c *gin.Context) {
+	log.Printf("start update node")
+	vps := vpsPb.Request{}
+	if err := c.ShouldBindJSON(&vps); err != nil {
+		log.Println(err)
+		c.JSON(http.StatusOK, gin.H{"status": "err", "errmsg": err})
+		//c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	resp, err := s.vpsClient.UpdateNode(context.Background(), &vps)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"status": "err", "errmsg": err})
+		//c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"Node":   resp,
+		"Errno":  resp.Errno,
+		"Errmsg": resp.Errmsg,
+	})
+}
+
 func (s *VpsAPIHandler) ExpandVolume(c *gin.Context) {
 	log.Printf("start new node")
 	vps := vpsPb.VolumeRequest{}

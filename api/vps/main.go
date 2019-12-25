@@ -47,6 +47,7 @@ func main() {
 	user := v1.Group("/vps")
 	user.POST("/new", vpsHandler.NewNode)
 	user.POST("/del", vpsHandler.DelNode)
+	user.POST("/update", vpsHandler.UpdateNode)
 	user.POST("/get", vpsHandler.GetAllVps)
 	user.POST("/nodeofuser", vpsHandler.GetAllNodeFromUser)
 

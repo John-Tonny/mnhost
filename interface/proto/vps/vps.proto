@@ -8,6 +8,7 @@ service Vps {
 	
 	rpc CreateNode(Request) returns (Response) {}
 	rpc RemoveNode(Request) returns (Response) {}
+	rpc UpdateNode(Request) returns (Response) {}
 	
 	rpc ExpandVolume(VolumeRequest) returns (Response) {}	
 	

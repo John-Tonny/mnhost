@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package go.micro.srv.system;
+
+service System {
+	rpc GetSysStatus(Request) returns (SysResponse) {}
+	rpc WriteConf(ConfRequest) returns (Response) {}
+}
+
+message Request {
+	string name = 1;
+}
+
+message ConfRequest {
+	int64 rpcPort = 1;
+	string mnKey = 2;
+	string externalIp = 3;
+}
+
+message Response {
+	string errno = 1;
+	string errmsg = 2;
+	string msg = 3;
+}
+
+message SysResponse {
+	string errno = 1;
+	string errmsg = 2;	
+	float CpuPercent = 3;
+	float MemPercent = 4;
+}
+

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	//"path/filepath"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -243,6 +244,32 @@ func (e *Vps) RemoveNode(ctx context.Context, req *vps.Request, rsp *vps.Respons
 	rsp.Mix = jnode
 
 	log.Println("success remove node request")
+	return nil
+}
+
+func (e *Vps) UpdateNode(ctx context.Context, req *vps.Request, rsp *vps.Response) error {
+	log.Println("Update node request")
+	nodeId := req.Id
+
+	var tnode models.TNode
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_node")
+	err := qs.Filter("id", nodeId).One(&tnode)
+	if err != nil {
+		rsp.Errno = utils.RECODE_NODATA
+		rsp.Errmsg = utils.RecodeText(rsp.Errno)
+		return err
+	}
+
+	go e.processUpdateNode(tnode.Id, "cluster1")
+
+	rsp.Errno = utils.RECODE_OK
+	rsp.Errmsg = utils.RecodeText(rsp.Errno)
+
+	jnode, err := json.Marshal(tnode)
+	rsp.Mix = jnode
+
+	log.Println("success update node request")
 	return nil
 }
 
@@ -502,6 +529,34 @@ func (e *Vps) processRemoveNode(nodeId int64, clusterName string) error {
 
 	e.pubMsg(userId, mnhostTypes.TOPIC_DELNODE_SUCCESS, strconv.FormatInt(nodeId, 10))
 	log.Printf("success process remove node from %v\n", nodeId)
+
+	return nil
+}
+
+func (e *Vps) processUpdateNode(nodeId int64, clusterName string) error {
+	log.Printf("process remove node from %v\n", nodeId)
+
+	var tnode models.TNode
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_node")
+	err := qs.Filter("id", nodeId).One(&tnode)
+	if err != nil {
+		e.pubErrMsg("", "updatenode", utils.RECODE_NODATA, err.Error(), mnhostTypes.TOPIC_UPDATENODE_FAIL)
+		return err
+	}
+	log.Printf("node:%v\n", tnode)
+
+	userId := strconv.FormatInt(tnode.Userid, 10)
+
+	tnode.Status = "wait-conf"
+	o.Update(&tnode)
+	if err != nil {
+		e.pubErrMsg("", "updatenode", utils.RECODE_UPDATEERR, err.Error(), mnhostTypes.TOPIC_UPDATENODE_FAIL)
+		return err
+	}
+
+	e.pubMsg(userId, mnhostTypes.TOPIC_UPDATENODE_SUCCESS, strconv.FormatInt(nodeId, 10))
+	log.Printf("success process update node from %v\n", nodeId)
 
 	return nil
 }
@@ -797,12 +852,19 @@ func NewNode(orderId int64, clusterName string) (string, error) {
 		return utils.SERVICE_NEW_ERR, err
 	}*/
 
+	publicIp, privateIp, err := AllocateVps()
+	if err != nil {
+		return utils.SERVICE_NEW_ERR, err
+	}
+
 	var tnode models.TNode
 	tnode.ClusterName = clusterName
 	tnode.CoinName = torder.Coinname
 	tnode.Port = rpcport
 	tnode.Userid = torder.Userid
 	tnode.Order = &torder
+	tnode.PublicIp = publicIp
+	tnode.PrivateIp = privateIp
 	tnode.Status = "wait-data"
 	o = orm.NewOrm()
 	_, err = o.Insert(&tnode)
@@ -1181,11 +1243,11 @@ func Init(clusterName string) error {
 			return err
 		}
 
-		/*err = EfsMount(tvps.PublicIp, tvps.PrivateIp, mnhostTypes.SSH_PASSWORD)
+		err = common.EfsMount(tvps.PublicIp, tvps.PrivateIp, mnhostTypes.SSH_PASSWORD)
 		if err != nil {
 			log.Fatalf("init: mount efs :%+v!\n", err)
 			return err
-		}*/
+		}
 	}
 
 	if nums < mnhostTypes.INIT_MANAGER_NUMS {
@@ -1407,4 +1469,58 @@ func NodeRemoveData(coinName string, rpcport int, publicIp, privateIp string) (s
 		time.Sleep(time.Second * 5)
 	}
 	return "", errors.New("remove data timeout")
+}
+
+func AllocateVps() (string, string, error) {
+	var tvpss []models.TVps
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_vps")
+	nums, err := qs.All(&tvpss)
+	if err != nil {
+		return "", "", err
+	}
+
+	if nums == 0 {
+		return "", "", errors.New("no vps")
+	}
+
+	type NodeInfo struct {
+		PrivateIp string
+		Nums      int
+	}
+
+	var nodes []NodeInfo
+	for _, tvps := range tvpss {
+		var tnodes []models.TNode
+		o = orm.NewOrm()
+		qs = o.QueryTable("t_node")
+		nodenums, err := qs.Filter("privateIp", tvps.PrivateIp).All(&tnodes)
+		if err != nil {
+			return "", "", err
+		}
+		nodes = append(nodes, NodeInfo{tvps.PrivateIp, int(nodenums)})
+	}
+
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].Nums < nodes[j].Nums // 升序
+		//return nodes[i].Nums > nodes[j].Nums // 降序
+	})
+	publicIp, err := GetPublicIpFromVps(nodes[0].PrivateIp)
+	if err != nil {
+		return "", nodes[0].PrivateIp, err
+	}
+
+	return publicIp, nodes[0].PrivateIp, nil
+}
+
+func GetPublicIpFromVps(privateIp string) (string, error) {
+	var tvps models.TVps
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_vps")
+	err := qs.Filter("privateIp", privateIp).One(&tvps)
+	if err != nil {
+		return "", err
+	}
+
+	return tvps.PublicIp, nil
 }

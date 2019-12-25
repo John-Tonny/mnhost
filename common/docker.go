@@ -86,13 +86,14 @@ func (c *DockerClient) SwarmJoinA(advertiseAddr, remoteAddrs, token string) erro
 	return nil
 }
 
-func (c *DockerClient) ServiceCreateA(coinName string, rpcport int, dockerId string) error {
-	placement := fmt.Sprintf("node.hostname==%s", "ip-172-31-47-252")
+func (c *DockerClient) ServiceCreateA(coinName string, rpcport int, dockerId, privateIp string) error {
+	privateIp = strings.Replace(privateIp, ".", "-", -1)
+	placement := fmt.Sprintf("node.hostname==ip-%s", privateIp)
 	replicas := uint64(1)
 	delay := time.Duration(10000000000)
 	maxAttempts := uint64(0)
 	nodeName := fmt.Sprintf("%s%d", coinName, rpcport)
-	log.Printf("****create service:%s\n", nodeName)
+	log.Printf("****create service:%s##%s\n", nodeName, placement)
 	serviceSpec := swarm.ServiceSpec{
 		Annotations: swarm.Annotations{
 			Name: nodeName,

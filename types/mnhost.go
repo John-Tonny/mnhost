@@ -120,6 +120,10 @@ const TOPIC_RESTARTNODE_SUCCESS = "Vircle.Mnhost.TOPIC.RestartNode.Success"
 const TOPIC_RESTARTNODE_FAIL = "Vircle.Mnhost.TOPIC.RestartNode.Fail"
 const TOPIC_RESTARTNODE_START = "Vircle.Mnhost.TOPIC.RestartNode.Start"
 
+const TOPIC_UPDATENODE_SUCCESS = "Vircle.Mnhost.TOPIC.UpdateNode.Success"
+const TOPIC_UPDATENODE_FAIL = "Vircle.Mnhost.TOPIC.UpdateNode.Fail"
+const TOPIC_UPDATENODE_START = "Vircle.Mnhost.TOPIC.UpdateNode.Start"
+
 const SSH_PASSWORD = "vpub$999000"
 const RPC_USER = "vpub"
 const RPC_PASSWORD = "vpub999000"
