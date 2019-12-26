@@ -53,6 +53,7 @@ type TNode struct {
 	ClusterName string    `orm:"size(32)" json:"cluster_name"`                  //集群名称
 	Order       *TOrder   `orm:"rel(fk)" json:"order_id"`                       //订单编号		与订单表进行关联
 	CoinName    string    `orm:"size(32)" json:"coin_name"`                     //币名称
+	RpcPort     int       `json:"rpc_port"`                                     //rpc端口号
 	Port        int       `json:"port"`                                         //rpc端口号
 	PublicIp    string    `orm:"size(64)" json:"public_ip"`                     //主机公共IP
 	PrivateIp   string    `orm:"size(64)" json:"private_ip"`                    //主机私有IP

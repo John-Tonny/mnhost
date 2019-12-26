@@ -147,7 +147,7 @@ func GetNodeIp(publicIp, privateIp, coinName string, rpcPort int, wg *sync.WaitG
 				var tnode models.TNode
 				o = orm.NewOrm()
 				qs = o.QueryTable("t_node")
-				err = qs.Filter("coinName", coinName).Filter("port", rpcPort).One(&tnode)
+				err = qs.Filter("coinName", coinName).Filter("rpcPort", rpcPort).One(&tnode)
 				if err == nil {
 					tnode.PublicIp = tvps.PublicIp
 					tnode.PrivateIp = tvps.PrivateIp
@@ -204,7 +204,7 @@ func GetNodeIp(publicIp, privateIp, coinName string, rpcPort int, wg *sync.WaitG
 						var tnode models.TNode
 						o = orm.NewOrm()
 						qs = o.QueryTable("t_node")
-						err = qs.Filter("coinName", coinName).Filter("port", rpcPort).One(&tnode)
+						err = qs.Filter("coinName", coinName).Filter("rpcPort", rpcPort).One(&tnode)
 						if err == nil {
 							tnode.PublicIp = tvps.PublicIp
 							tnode.PrivateIp = tvps.PrivateIp
@@ -242,7 +242,7 @@ func NodeReadyData(publicIp, privateIp, coinName string, rpcPort int, wg *sync.W
 	var tnode models.TNode
 	o = orm.NewOrm()
 	qs = o.QueryTable("t_node")
-	err = qs.Filter("coinName", coinName).Filter("port", rpcPort).One(&tnode)
+	err = qs.Filter("coinName", coinName).Filter("rpcPort", rpcPort).One(&tnode)
 	if err != nil {
 		return err
 	}
@@ -456,7 +456,7 @@ func NodeReadyConfig(publicIp, privateIp, coinName string, rpcPort int, wg *sync
 	var tnode models.TNode
 	o = orm.NewOrm()
 	qs = o.QueryTable("t_node")
-	err = qs.Filter("coinName", coinName).Filter("port", rpcPort).One(&tnode)
+	err = qs.Filter("coinName", coinName).Filter("rpcPort", rpcPort).One(&tnode)
 	if err != nil {
 		return err
 	}
@@ -526,7 +526,7 @@ func NodeReadyConfig(publicIp, privateIp, coinName string, rpcPort int, wg *sync
 	resp, _, err1 := request.Post(url).
 		SendStruct(conf).
 		EndStruct(&basicResponse)
-	//log.Printf("resp***:%+v\n", resp)
+	log.Printf("resp***:%+v\n", resp)
 	if err1 != nil {
 		return err
 	} else {
@@ -582,6 +582,7 @@ func NodeReadyConfig(publicIp, privateIp, coinName string, rpcPort int, wg *sync
 			return err
 		}
 	} else {
+		log.Printf("***wait restart %s%d\n", coinName, rpcPort)
 		time.Sleep(time.Second * 70)
 	}
 

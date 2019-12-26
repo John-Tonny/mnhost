@@ -826,11 +826,11 @@ func NewNode(orderId int64, clusterName string) (string, error) {
 	}
 
 	mutex.Lock()
-	rpcport, _, err := getRpcPort()
+	rpcport, port, err := getRpcPort()
 	if err != nil {
 		return utils.PORT_ERR, err
 	}
-
+	//log.Println(port)
 	/*publicIp, privateIp, err := common.GetVpsIp(clusterName)
 	if err != nil {
 		return utils.MANAGER_ERR, err
@@ -860,7 +860,8 @@ func NewNode(orderId int64, clusterName string) (string, error) {
 	var tnode models.TNode
 	tnode.ClusterName = clusterName
 	tnode.CoinName = torder.Coinname
-	tnode.Port = rpcport
+	tnode.RpcPort = rpcport
+	tnode.Port = port
 	tnode.Userid = torder.Userid
 	tnode.Order = &torder
 	tnode.PublicIp = publicIp
@@ -900,7 +901,7 @@ func DelNode(nodeId int64, clusterName string) (string, error) {
 	}
 	defer mc.Close()
 
-	nodeName := fmt.Sprintf("%s%d", tnode.CoinName, tnode.Port)
+	nodeName := fmt.Sprintf("%s%d", tnode.CoinName, tnode.RpcPort)
 	_, err = mc.ServiceInspectA(nodeName)
 	if err != nil {
 		bError := true
@@ -920,10 +921,10 @@ func DelNode(nodeId int64, clusterName string) (string, error) {
 	var tcoin models.TCoin
 	o = orm.NewOrm()
 	qs = o.QueryTable("t_coin")
-	err = qs.Filter("name", tnode.CoinName).Filter("port", tnode.Port).One(&tcoin)
+	err = qs.Filter("name", tnode.CoinName).Filter("port", tnode.RpcPort).One(&tcoin)
 	if err != nil {
 		log.Printf("******")
-		errcode, err := NodeRemoveData(tnode.CoinName, tnode.Port, publicIp, privateIp)
+		errcode, err := NodeRemoveData(tnode.CoinName, tnode.RpcPort, publicIp, privateIp)
 		if err != nil {
 			log.Printf("remove data error:%s-%+v\n", errcode, err)
 			return errcode, err
@@ -1053,7 +1054,7 @@ func getRpcPort() (int, int, error) {
 
 func portExist(port int, tnodes *[]models.TNode) bool {
 	for _, node := range *tnodes {
-		if node.Port == port {
+		if node.RpcPort == port {
 			return true
 		}
 	}
@@ -1169,7 +1170,7 @@ func Node2PBNode(u *models.TNode) vps.Node {
 		OrderId:     strconv.FormatInt(u.Order.Id, 10),
 		ClusterName: u.ClusterName,
 		CoinName:    u.CoinName,
-		Port:        strconv.Itoa(u.Port),
+		RpcPort:     strconv.Itoa(u.RpcPort),
 	}
 }
 

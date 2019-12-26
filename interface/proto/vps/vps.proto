@@ -42,7 +42,7 @@ message Node {
 	string orderId = 3;
 	string clusterName = 4;
 	string coinName = 5;
-	string port = 6;
+	string rpcPort = 6;
 }
 
 message Request {

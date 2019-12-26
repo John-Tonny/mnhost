@@ -410,9 +410,9 @@ func MonitorService() {
 		wg.Add(int(nums))
 		for _, tnode := range tnodes {
 			if tnode.Status == "wait-data" {
-				common.NodeReadyData(mpublicIp, mprivateIp, tnode.CoinName, tnode.Port, &wg)
+				common.NodeReadyData(mpublicIp, mprivateIp, tnode.CoinName, tnode.RpcPort, &wg)
 			} else {
-				ProcessService(tnode.ClusterName, tnode.CoinName, tnode.Status, tnode.PrivateIp, mpublicIp, mprivateIp, tnode.Port, mc, &wg)
+				ProcessService(tnode.ClusterName, tnode.CoinName, tnode.Status, tnode.PrivateIp, mpublicIp, mprivateIp, tnode.RpcPort, mc, &wg)
 			}
 		}
 		wg.Wait()
@@ -452,9 +452,9 @@ func MonitorApp() {
 			//if tnode.PublicIp == "" || tnode.PrivateIp == "" {
 			//	common.GetNodeIp(mpublicIp, mprivateIp, tnode.CoinName, tnode.Port, &wg)
 			if tnode.Status == "wait-conf" {
-				common.NodeReadyConfig(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.Port, &wg)
+				common.NodeReadyConfig(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.RpcPort, &wg)
 			} else if tnode.Status == "finish" {
-				GetMasterNodeStatus(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.Port, &wg)
+				GetMasterNodeStatus(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.RpcPort, &wg)
 			} else {
 				wg.Done()
 			}
@@ -552,7 +552,7 @@ func ProcessService(clusterName, coinName, status, privateIp, managerPublicIp, m
 		var tnode models.TNode
 		o := orm.NewOrm()
 		qs := o.QueryTable("t_node")
-		err = qs.Filter("clusterName", clusterName).Filter("coinName", coinName).Filter("port", rpcPort).One(&tnode)
+		err = qs.Filter("clusterName", clusterName).Filter("coinName", coinName).Filter("rpcPort", rpcPort).One(&tnode)
 		if err != nil {
 			return err
 		}
@@ -629,7 +629,7 @@ func ProcessUpdateService(coinName, dockerId string) error {
 	}
 
 	for _, tnode := range tnodes {
-		go ServiceUpdate(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, dockerId, tnode.Port)
+		go ServiceUpdate(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, dockerId, tnode.RpcPort)
 	}
 	log.Println("finish monitor app")
 	return nil
@@ -684,7 +684,7 @@ func GetMasterNodeStatus(publicIp, privateIp, coinName string, rpcPort int, wg *
 	var tnode models.TNode
 	o := orm.NewOrm()
 	qs := o.QueryTable("t_node")
-	err = qs.Filter("coinName", coinName).Filter("port", rpcPort).One(&tnode)
+	err = qs.Filter("coinName", coinName).Filter("rpcPort", rpcPort).One(&tnode)
 	if err != nil {
 		return "", err
 	}
@@ -852,7 +852,7 @@ func MasterNodeRefused(coinName string, rpcPort int) error {
 	var tnode models.TNode
 	o := orm.NewOrm()
 	qs := o.QueryTable("t_node")
-	err := qs.Filter("coinName", coinName).Filter("port", rpcPort).One(&tnode)
+	err := qs.Filter("coinName", coinName).Filter("rpcPort", rpcPort).One(&tnode)
 	if err != nil {
 		return err
 	}
