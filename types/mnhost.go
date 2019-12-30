@@ -39,6 +39,12 @@ type NameRequest struct {
 	Name string
 }
 
+type MountRequest struct {
+	//必须的大写开头
+	DeviceName string
+	NodeName   string
+}
+
 type BasicResponse struct {
 	Code    string
 	CodeMsg string
@@ -132,14 +138,17 @@ const PORT_TO = 65530
 const S_PORT = "9998"
 const S_RPCPROT = "9999"
 const S_WORKDIR = "vircle"
+const DEVICE_NAME_FROM = "f"
+const DEVICE_NAME_TO = "xvdz"
 
 const TEST_VOLUME_SIZE = 1
 
+const MOUNT_PATH = "/mnt/vircle"
 const NFS_HOST = "172.31.43.253"
 const NFS_PATH = "/mnt/efs"
 const DOCKER_API_VERSION = "1.40"
 const AWS_ACCOUNT = "test-account"
-const SYSTEM_IMAGE = "ami-0815b98db1e19417a" //"ami-0b0426f6bc13cbfe4"
+const SYSTEM_IMAGE = "ami-05c4f64b6f704720f" // "ami-0815b98db1e19417a" //"ami-0b0426f6bc13cbfe4"
 const ZONE_DEFAULT = "us-east-2"
 const INSTANCE_TYPE_DEFAULT = "t2.small" //"t2.micro"
 const VOLUME_SIZE_DEFAULT = 20

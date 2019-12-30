@@ -448,15 +448,17 @@ func MonitorApp() {
 		log.Printf("node nums:%d\n", nums)
 		for _, tnode := range tnodes {
 			aaa++
-			log.Printf("***aaaa:%d--%+v\n", aaa, tnode)
 			//if tnode.PublicIp == "" || tnode.PrivateIp == "" {
 			//	common.GetNodeIp(mpublicIp, mprivateIp, tnode.CoinName, tnode.Port, &wg)
 			if tnode.Status == "wait-conf" {
 				common.NodeReadyConfig(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.RpcPort, &wg)
+				log.Printf("***bbb:%d---%+v\n", aaa, tnode)
 			} else if tnode.Status == "finish" {
 				GetMasterNodeStatus(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.RpcPort, &wg)
+				log.Printf("***ccc:%d---%+v\n", aaa, tnode)
 			} else {
 				wg.Done()
+				log.Printf("***ddd:%d---%+v\n", aaa, tnode)
 			}
 		}
 		wg.Wait()
@@ -468,16 +470,20 @@ func MonitorApp() {
 func ProcessNode(nodeInfo *mnhostTypes.NodeInfo, managerPublicIp, managerPrivateIp string, mc *common.DockerClient, wg *sync.WaitGroup) error {
 	defer func() {
 		wg.Done()
+		err := recover()
+		if err != nil {
+			log.Printf("get node ip error:%+v\n", err)
+		}
 	}()
 
 	if !nodeInfo.Status {
 		log.Printf("start node repaire %s-%s-%s-%s-%s", nodeInfo.PublicIp, nodeInfo.PrivateIp, managerPublicIp, managerPrivateIp, nodeInfo.Role)
 		if mc == nil {
-			return errors.New("no client mc")
+			panic(errors.New("no client mc"))
 		}
 		managerToken, workerToken, err := mc.SwarmInspectA()
 		if err != nil {
-			return err
+			panic(err)
 		} else {
 			err = SwarmReJoin(managerToken, workerToken, nodeInfo.PublicIp, nodeInfo.PrivateIp, managerPrivateIp, nodeInfo.Role, true)
 			if err != nil {
@@ -488,39 +494,13 @@ func ProcessNode(nodeInfo *mnhostTypes.NodeInfo, managerPublicIp, managerPrivate
 	return nil
 }
 
-func ProcessNode1(nodeMap mnhostTypes.NodeMap, managerPublicIp, managerPrivateIp string, wg *sync.WaitGroup) error {
-	var mc *common.DockerClient
-	for _, nodeInfo := range nodeMap.Node {
-		if !nodeInfo.Status {
-			log.Printf("start node %s-%s-%s-%s-%s", nodeInfo.PublicIp, nodeInfo.PrivateIp, managerPublicIp, managerPrivateIp, nodeInfo.Role)
-			var err error
-			if mc == nil {
-				mc, _, err = common.DockerNewClient(managerPublicIp, managerPrivateIp)
-			}
-
-			if err != nil {
-				continue
-			}
-			if mc == nil {
-				continue
-			}
-			defer mc.Close()
-
-			managerToken, workerToken, err := mc.SwarmInspectA()
-			if err != nil {
-				continue
-			} else {
-				SwarmReJoin(managerToken, workerToken, nodeInfo.PublicIp, nodeInfo.PrivateIp, managerPrivateIp, nodeInfo.Role, true)
-			}
-		}
-	}
-	log.Printf("success node repaire")
-	return nil
-}
-
 func ProcessService(clusterName, coinName, status, privateIp, managerPublicIp, managerPrivateIp string, rpcPort int, mc *common.DockerClient, wg *sync.WaitGroup) error {
 	defer func() {
 		wg.Done()
+		err := recover()
+		if err != nil {
+			log.Printf("process service error:%+v\n", err)
+		}
 	}()
 	var err error
 
@@ -541,12 +521,12 @@ func ProcessService(clusterName, coinName, status, privateIp, managerPublicIp, m
 		log.Printf("###service inspect %s", nodeName)
 		dockerId, err := GetDocker(coinName)
 		if err != nil {
-			return err
+			panic(err)
 		}
 		log.Printf("start service repaire, ip:%s-%s\n", managerPublicIp, managerPrivateIp)
 		err = mc.ServiceCreateA(coinName, rpcPort, dockerId, privateIp)
 		if err != nil {
-			return err
+			panic(err)
 		}
 
 		var tnode models.TNode
@@ -554,7 +534,7 @@ func ProcessService(clusterName, coinName, status, privateIp, managerPublicIp, m
 		qs := o.QueryTable("t_node")
 		err = qs.Filter("clusterName", clusterName).Filter("coinName", coinName).Filter("rpcPort", rpcPort).One(&tnode)
 		if err != nil {
-			return err
+			panic(err)
 		}
 
 		mutex.Lock()
@@ -566,7 +546,7 @@ func ProcessService(clusterName, coinName, status, privateIp, managerPublicIp, m
 		tnode.Status = "wait-conf"
 		_, err = o.Update(&tnode)
 		if err != nil {
-			return err
+			panic(err)
 		}
 
 		log.Printf("success service repaire, ip:%s-%s\n", managerPublicIp, managerPrivateIp)
@@ -576,38 +556,10 @@ func ProcessService(clusterName, coinName, status, privateIp, managerPublicIp, m
 			log.Printf("service retrys:%d\n", serviceRetrys.Retrys[nodeName].Nums)
 			delete(serviceRetrys.Retrys, nodeName)
 		}
-
 		log.Printf("***service inspect %s", nodeName)
 	}
 	return nil
 }
-
-/*func ProcessService1(serviceMap mnhostTypes.ServiceMap, managerPublicIp, managerPrivateIp string) error {
-	bFirst := false
-	for _, serviceInfo := range serviceMap.Service {
-		log.Printf("ip:%s-%s\n", managerPublicIp, managerPrivateIp)
-		var mc *common.DockerClient
-		var err error
-		if bFirst == false {
-			bFirst = true
-			mc, _, err = common.DockerNewClient(managerPublicIp, managerPrivateIp)
-			if err != nil {
-				log.Printf("err1:%+v\n", err)
-				return err
-			}
-			if mc == nil {
-				return errors.New("ip error")
-			}
-			defer mc.Close()
-		}
-		err = mc.ServiceCreateA(serviceInfo.CoinName, serviceInfo.RpcPort, serviceInfo.DockerId)
-		if err != nil {
-			continue
-		}
-	}
-	log.Printf("success service repaire")
-	return nil
-}*/
 
 func ProcessApp() error {
 
@@ -648,7 +600,12 @@ func GetDocker(coinName string) (string, error) {
 
 func GetMasterNodeStatus(publicIp, privateIp, coinName string, rpcPort int, wg *sync.WaitGroup) (string, error) {
 	defer func() {
+		log.Printf("***getStatus exit:%s-%s%d\n", publicIp, coinName, rpcPort)
 		wg.Done()
+		err := recover()
+		if err != nil {
+			log.Printf("get masternode status error:%+v\n", err)
+		}
 	}()
 	log.Printf("***getStatus:%s-%s%d\n", publicIp, coinName, rpcPort)
 	ipAddress := privateIp
@@ -664,15 +621,13 @@ func GetMasterNodeStatus(publicIp, privateIp, coinName string, rpcPort int, wg *
 	client := virclerpc.NewRPCClient(url, basicAuth)
 	if client == nil {
 		MasterNodeRefused(coinName, rpcPort)
-		log.Printf("get master status:%+v", client)
-		return "", errors.New("no connect")
+		panic(errors.New("no connect"))
 	}
 
 	msg, err := client.GetMasterNode("status")
 	if err != nil {
 		MasterNodeRefused(coinName, rpcPort)
-		log.Printf("get master status:%+v", err)
-		return "", err
+		panic(err)
 	}
 
 	nodeName := fmt.Sprintf("%s%d", coinName, rpcPort)
@@ -686,12 +641,13 @@ func GetMasterNodeStatus(publicIp, privateIp, coinName string, rpcPort int, wg *
 	qs := o.QueryTable("t_node")
 	err = qs.Filter("coinName", coinName).Filter("rpcPort", rpcPort).One(&tnode)
 	if err != nil {
-		return "", err
+		panic(err)
 	}
+
 	tnode.State = msg.State
 	_, err = o.Update(&tnode)
 	if err != nil {
-		return "", err
+		panic(err)
 	}
 
 	log.Printf("state:%s-%s-%s%d\n", publicIp, msg.State, coinName, rpcPort)
@@ -807,7 +763,7 @@ func SwarmReJoin(managerToken, workerToken, publicIp, privateIp, leaderPrivateIp
 	log.Printf("start join %s-%s-%s", status, privateIp, leaderPrivateIp)
 	err = c.SwarmJoinA(privateIp, leaderPrivateIp, token)
 	if err != nil {
-		if strings.ContainsAny(err.Error(), "node is already part of a swarm") == true {
+		if strings.Contains(err.Error(), "node is already part of a swarm") == true {
 			return nil
 		}
 		return err
@@ -870,12 +826,12 @@ func MasterNodeRefused(coinName string, rpcPort int) error {
 
 func DelayTime(startTime, defaultTime int64, name string) {
 	totalTime := time.Now().Unix() - startTime
+	log.Printf("%s:%d\n", name, totalTime)
 	if totalTime < defaultTime {
 		time.Sleep(time.Second * time.Duration(defaultTime))
 	} else {
 		time.Sleep(time.Second * time.Duration(totalTime))
 	}
-	log.Printf("%s:%d\n", name, totalTime)
 }
 
 //Error: Cannot obtain a lock on data directory

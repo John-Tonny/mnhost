@@ -21,6 +21,7 @@ replace github.com/John-Tonny/mnhost/interface/out/vps => /root/mygo/src/github.
 replace github.com/John-Tonny/mnhost/api/vps/handler => /root/mygo/src/github.com/John-Tonny/mnhost/api/vps/handler
 
 require (
+	github.com/John-Tonny/micro/vps/amazon v0.0.0-20191214054803-9172d7f73796 // indirect
 	github.com/John-Tonny/mnhost/common v0.0.0-00010101000000-000000000000 // indirect
 	github.com/John-Tonny/mnhost/conf v0.0.0-00010101000000-000000000000 // indirect
 	github.com/John-Tonny/mnhost/interface/out/user v0.0.0-20191128093822-f81a1f9dd5df // indirect

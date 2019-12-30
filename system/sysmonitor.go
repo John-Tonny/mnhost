@@ -7,7 +7,9 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -37,6 +39,12 @@ type NameInfo struct {
 type NodeNameInfo struct {
 	CoinName string
 	RpcPort  int
+}
+
+type MountInfo struct {
+	//必须的大写开头
+	DeviceName string
+	NodeName   string
 }
 
 type Conf struct {
@@ -80,6 +88,18 @@ type MountController struct {
 	beego.Controller
 }
 
+type MountEbsController struct {
+	beego.Controller
+}
+
+type ModifyEbsController struct {
+	beego.Controller
+}
+
+type UmountEbsController struct {
+	beego.Controller
+}
+
 type NewFileController struct {
 	beego.Controller
 }
@@ -89,6 +109,7 @@ type DelFileController struct {
 }
 
 const (
+	MOUNT_PATH   = "/mnt/vircle"
 	NFS_PATH     = "/mnt/efs"
 	NODE_PREFIX  = "node"
 	RPC_USER     = "vpub"
@@ -217,6 +238,102 @@ func (this *MountController) Get() {
 	this.ServeJSON()
 }
 
+func (this *MountEbsController) Post() {
+	params := MountInfo{}
+	body := this.Ctx.Input.RequestBody
+	err := json.Unmarshal(body, &params)
+	data := &RespInfo{}
+	if err != nil {
+		data = &RespInfo{
+			"400",
+			"参数错误"}
+	} else {
+		fmt.Printf("params:%+v\n", params)
+		if params.DeviceName == "" || params.NodeName == "" {
+			data = &RespInfo{
+				"400",
+				"参数错误"}
+		} else {
+			err := MountEbs(params.DeviceName, params.NodeName)
+			if err != nil {
+				data = &RespInfo{
+					"401",
+					"命令执行错误"}
+			} else {
+				data = &RespInfo{
+					"200",
+					"成功"}
+			}
+		}
+	}
+	this.Data["json"] = data
+	this.ServeJSON()
+}
+
+func (this *ModifyEbsController) Post() {
+	params := NameInfo{}
+	body := this.Ctx.Input.RequestBody
+	err := json.Unmarshal(body, &params)
+	data := &RespInfo{}
+	if err != nil {
+		data = &RespInfo{
+			"400",
+			"参数错误"}
+	} else {
+		fmt.Printf("params:%+v\n", params)
+		if params.Name == "" {
+			data = &RespInfo{
+				"400",
+				"参数错误"}
+		} else {
+			err := ModifyEbs(params.Name)
+			if err != nil {
+				data = &RespInfo{
+					"401",
+					"命令执行错误"}
+			} else {
+				data = &RespInfo{
+					"200",
+					"成功"}
+			}
+		}
+	}
+	this.Data["json"] = data
+	this.ServeJSON()
+}
+
+func (this *UmountEbsController) Post() {
+	params := NameInfo{}
+	body := this.Ctx.Input.RequestBody
+	err := json.Unmarshal(body, &params)
+	data := &RespInfo{}
+	if err != nil {
+		data = &RespInfo{
+			"400",
+			"参数错误"}
+	} else {
+		fmt.Printf("params:%+v\n", params)
+		if params.Name == "" {
+			data = &RespInfo{
+				"400",
+				"参数错误"}
+		} else {
+			err := UmountEbs(params.Name)
+			if err != nil {
+				data = &RespInfo{
+					"401",
+					"命令执行错误"}
+			} else {
+				data = &RespInfo{
+					"200",
+					"成功"}
+			}
+		}
+	}
+	this.Data["json"] = data
+	this.ServeJSON()
+}
+
 func (this *NewFileController) Get() {
 	params := NodeNameInfo{}
 	body := this.Ctx.Input.RequestBody
@@ -228,7 +345,7 @@ func (this *NewFileController) Get() {
 			"参数错误"}
 	} else {
 		fmt.Printf("params:%+v\n", params)
-		if params.Name == "" || params.RpcPort == 0 {
+		if params.CoinName == "" || params.RpcPort == 0 {
 			data = &RespInfo{
 				"400",
 				"参数错误"}
@@ -239,12 +356,13 @@ func (this *NewFileController) Get() {
 					"401",
 					"命令执行错误"}
 			} else {
-				data = &NameRespInfo{
+				data = &RespInfo{
 					"200",
 					"成功"}
 			}
 		}
-	}	this.Data["json"] = data
+	}
+	this.Data["json"] = data
 	this.ServeJSON()
 }
 
@@ -259,28 +377,23 @@ func (this *DelFileController) Get() {
 			"参数错误"}
 	} else {
 		fmt.Printf("params:%+v\n", params)
-		if params.Name == "" || params.RpcPort == 0 {
+		if params.CoinName == "" || params.RpcPort == 0 {
 			data = &RespInfo{
 				"400",
 				"参数错误"}
 		} else {
-			err := delFile(params.CoinName, params.RpcPort)
-			if err != nil {
-				data = &RespInfo{
-					"401",
-					"命令执行错误"}
-			} else {
-				data = &NameRespInfo{
-					"200",
-					"成功"}
-			}
+			data = &RespInfo{
+				"200",
+				"成功"}
 		}
-	}	this.Data["json"] = data
+	}
+	this.Data["json"] = data
 	this.ServeJSON()
 }
 
 func writeConf(conf Conf) {
-	fileName := fmt.Sprintf("%s/%s/%s%d/%s", NFS_PATH, conf.CoinName, NODE_PREFIX, conf.RpcPort, conf.FileName)
+	//fileName := fmt.Sprintf("%s/%s/%s%d/%s", NFS_PATH, conf.CoinName, NODE_PREFIX, conf.RpcPort, conf.FileName)
+	fileName := fmt.Sprintf("%s/%s%d/%s", MOUNT_PATH, conf.CoinName, conf.RpcPort, conf.FileName)
 	cfg, err := ini.Load(fileName)
 
 	srpcPort := strconv.Itoa(conf.RpcPort)
@@ -311,6 +424,11 @@ func writeConf(conf Conf) {
 		cfg.SaveTo(fileName)
 	}
 
+	//删除lock
+	path1 := path.Dir(fileName)
+	fmt.Printf("remove lock :%s\n", path1)
+	os.RemoveAll(fmt.Sprintf("%s/%s", path1, ".lock"))
+	os.RemoveAll(fmt.Sprintf("%s/%s", path1, "testnet3/.lock"))
 }
 
 func restartApp(nodeName string) {
@@ -329,7 +447,7 @@ func restartApp(nodeName string) {
 		if err2 != nil || io.EOF == err2 {
 			break
 		}
-		if strings.ContainsAny(line, nodeName) == true {
+		if strings.Contains(line, nodeName) == true {
 			tmp := strings.Split(line, " ")
 			name = tmp[0]
 			fmt.Printf("name:%s-%d\n", name, len(name))
@@ -361,7 +479,7 @@ func findNodeName(nodeName string) (string, error) {
 		if err2 != nil || io.EOF == err2 {
 			break
 		}
-		if strings.ContainsAny(line, nodeName) && strings.ContainsAny(line, "Running") {
+		if strings.Contains(line, nodeName) && strings.Contains(line, "Running") {
 			line = DeleteExtraSpace(line)
 			tmp := strings.Split(line, " ")
 			if len(tmp) >= 6 {
@@ -411,9 +529,76 @@ func MountEfs() error {
 	return nil
 }
 
+func MountEbs(deviceName, nodeName string) error {
+	path := fmt.Sprintf("%s/%s", MOUNT_PATH, nodeName)
+	err := os.MkdirAll(path, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	deviceName = fmt.Sprintf("/dev/%s1", deviceName)
+	cmd := exec.Command("mount", deviceName, path)
+	cmd.CombinedOutput()
+
+	//already mounted on
+
+	cmd = exec.Command("df", "-h")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return errors.New("exec cmd error")
+	}
+
+	cmd.Start()
+	reader := bufio.NewReader(stdout)
+	//实时循环读取输出流中的一行内容
+	fmt.Printf("%s-%s\n", deviceName, path)
+	for {
+		line, err2 := reader.ReadString('\n')
+		if err2 != nil || io.EOF == err2 {
+			break
+		}
+		fmt.Printf("%s\n", line)
+		if strings.Contains(line, deviceName) && strings.Contains(line, path) {
+			fmt.Printf("success mount %s-%s\n", deviceName, nodeName)
+			return nil
+		}
+	}
+
+	return errors.New("no found")
+}
+
+func ModifyEbs(deviceName string) error {
+	deviceName = fmt.Sprintf("/dev/%s", deviceName)
+	cmd := exec.Command("growpart", deviceName, "1")
+	cmd.CombinedOutput()
+	/*if err != nil {
+		return err
+	}*/
+
+	deviceName = fmt.Sprintf("%s1", deviceName)
+	cmd = exec.Command("resize2fs", deviceName)
+	_, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("%+v\n", err)
+		return err
+	}
+
+	fmt.Printf("modify ebs %s\n", deviceName)
+	return nil
+}
+
+func UmountEbs(nodeName string) error {
+	path := fmt.Sprintf("%s/%s", MOUNT_PATH, nodeName)
+	cmd := exec.Command("umount", path)
+	cmd.CombinedOutput()
+
+	os.RemoveAll(path)
+
+	fmt.Printf("umount %s\n", path)
+	return nil
+}
+
 func newFile(coinName string, rpcProt int) error {
-	
-	
 	cmd := exec.Command("mkdir", NFS_PATH)
 	cmd.CombinedOutput()
 	/*if err != nil {
@@ -426,7 +611,6 @@ func newFile(coinName string, rpcProt int) error {
 		return err
 	}
 
-
 	return nil
 }
 
@@ -437,6 +621,9 @@ func main() {
 	beego.Router("/Restart", &RestartController{})
 	beego.Router("/FindNode", &FindNodeController{})
 	beego.Router("/Mount", &MountController{})
+	beego.Router("/MountEbs", &MountEbsController{})
+	beego.Router("/ModifyEbs", &ModifyEbsController{})
+	beego.Router("/UmountEbs", &UmountEbsController{})
 	beego.Router("/NewFile", &NewFileController{})
 	beego.Router("/DelFile", &DelFileController{})
 	beego.Run(":8844")

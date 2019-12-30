@@ -140,7 +140,7 @@ func main() {
 	// 创建 user-service 微服务的客户端
 	client1 := pb.NewVpsService(serviceName, srv.Client())
 
-	start := 376
+	start := 22
 	//stop := 371
 	starts := strconv.Itoa(start)
 	resp, err := client1.RemoveNode(context.Background(), &pb.Request{

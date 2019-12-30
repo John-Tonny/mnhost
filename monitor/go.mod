@@ -32,28 +32,20 @@ replace github.com/John-Tonny/micro/vps/amazon => /root/mygo/src/github.com/John
 
 replace github.com/John-Tonny/go-virclerpc => /root/mygo/src/github.com/John-Tonny/go-virclerpc
 
+replace github.com/John-Tonny/go-jsonrpc => /root/mygo/src/github.com/John-Tonny/go-jsonrpc
+
 require (
 	github.com/John-Tonny/go-virclerpc v0.0.0-00010101000000-000000000000
 	github.com/John-Tonny/mnhost/common v0.0.0-00010101000000-000000000000
-	github.com/John-Tonny/mnhost/conf v0.0.0-00010101000000-000000000000
+	github.com/John-Tonny/mnhost/conf v0.0.0-20191225064632-834cc3555a47
 	github.com/John-Tonny/mnhost/interface/out/log v0.0.0-00010101000000-000000000000
 	github.com/John-Tonny/mnhost/interface/out/mnmsg v0.0.0-00010101000000-000000000000
 	github.com/John-Tonny/mnhost/interface/out/monitor v0.0.0-00010101000000-000000000000
-	github.com/John-Tonny/mnhost/interface/out/user v0.0.0-00010101000000-000000000000 // indirect
-	github.com/John-Tonny/mnhost/model v0.0.0-00010101000000-000000000000
-	github.com/John-Tonny/mnhost/types v0.0.0-00010101000000-000000000000
-	github.com/John-Tonny/mnhost/utils v0.0.0-00010101000000-000000000000
+	github.com/John-Tonny/mnhost/model v0.0.0-20191225064632-834cc3555a47
+	github.com/John-Tonny/mnhost/types v0.0.0-20191225064632-834cc3555a47
+	github.com/John-Tonny/mnhost/utils v0.0.0-20191225064632-834cc3555a47
 	github.com/astaxie/beego v1.12.0
 	github.com/docker/docker v1.13.1
-	github.com/dynport/gossh v0.0.0-20170809141523-122e3ee2a6b0 // indirect
-	github.com/garyburd/redigo v1.6.0 // indirect
-	github.com/micro/go-log v0.1.0 // indirect
 	github.com/micro/go-micro v1.18.0
-	github.com/micro/go-plugins v1.5.1 // indirect
-	github.com/parnurzeal/gorequest v0.2.16 // indirect
 	github.com/robfig/cron v1.2.0
-	github.com/uber/jaeger-client-go v2.20.1+incompatible // indirect
-	github.com/uber/jaeger-lib v2.2.0+incompatible // indirect
-	gopkg.in/mgo.v2 v2.0.0-20190816093944-a6b53ec6cb22 // indirect
-	moul.io/http2curl v1.0.0 // indirect
 )

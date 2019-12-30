@@ -23,6 +23,9 @@ import (
 	"github.com/docker/docker/api/types/filters"
 
 	"github.com/parnurzeal/gorequest"
+
+	uec2 "github.com/John-Tonny/micro/vps/amazon"
+	"github.com/aws/aws-sdk-go/aws"
 )
 
 /*const LOGIN_USER = "root"
@@ -42,46 +45,19 @@ func SshNewClient(publicIp, privateIp, password string) *gossh.Client {
 	return c
 }
 
-/*
-func GetVpsIp(clusterName string) (string, string, error) {
-	var tvpss []models.TVps
-	o := orm.NewOrm()
-	qs := o.QueryTable("t_vps")
-	nums, err := qs.Filter("clusterName", clusterName).Filter("vps_role", ROLE_MANAGER).All(&tvpss)
-	if err != nil {
-		return "", "", err
-	}
-	if nums == 0 {
-		return "", "", errors.New("no manager")
-	}
-
-	for _, tvps := range tvpss {
-		client := SshNewClient(tvps.PublicIp, tvps.PrivateIp, SSH_PASSWORD)
-		if client == nil {
-			return "", "", errors.New("client no connect")
-		}
-		defer client.Close()
-
-		cmd := "docker node ls"
-		_, err = client.Execute(cmd)
-		if err == nil {
-
-			return tvps.PublicIp, tvps.PrivateIp, nil
-		}
-	}
-	return "", "", errors.New("no manager")
-}
-*/
-
 func GetNodeIp(publicIp, privateIp, coinName string, rpcPort int, wg *sync.WaitGroup) error {
 	defer func() {
 		wg.Done()
+		err := recover()
+		if err != nil {
+			log.Printf("get node ip error:%+v\n", err)
+		}
 	}()
 	nodeName := fmt.Sprintf("%s%d", coinName, rpcPort)
 	log.Printf("start get node ip from %s\n", nodeName)
 
 	nodeIpResponse := &mnhostTypes.NodeIpResponse{}
-	request := gorequest.New()
+	request := gorequest.New().Timeout(5000 * time.Millisecond)
 	ipAddress := privateIp
 	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
 		ipAddress = publicIp
@@ -95,23 +71,23 @@ func GetNodeIp(publicIp, privateIp, coinName string, rpcPort int, wg *sync.WaitG
 		SendStruct(params).
 		EndStruct(&nodeIpResponse)
 	if err1 != nil {
-		return errors.New("http post error")
+		panic(errors.New("findnode error"))
 	} else {
 		if resp.StatusCode != 200 {
-			return errors.New(resp.Status)
+			panic(errors.New(resp.Status))
 		}
 
 		if nodeIpResponse.Code != "200" {
-			return errors.New(nodeIpResponse.CodeMsg)
+			panic(errors.New(nodeIpResponse.CodeMsg))
 		}
 	}
 	if len(nodeIpResponse.Name) == 0 {
-		return errors.New("no find service")
+		panic(errors.New("no find service"))
 	}
 
 	mc, _, err := DockerNewClient(publicIp, privateIp)
 	if err != nil {
-		return err
+		panic(err)
 	}
 	defer mc.Close()
 
@@ -158,65 +134,6 @@ func GetNodeIp(publicIp, privateIp, coinName string, rpcPort int, wg *sync.WaitG
 		}
 	}
 
-	/*client := SshNewClient(publicIp, privateIp, mnhostTypes.SSH_PASSWORD)
-	if client == nil {
-		return errors.New("client no connect")
-	}
-	defer client.Close()
-
-	cmd := fmt.Sprintf("docker service ps %s | awk '{if($5==\"Running\"){print $4;}}'", nodeName)
-	log.Println(cmd)
-	result, err := client.Execute(cmd)
-	if err == nil {
-		hostName := strings.Replace(result.Stdout(), "\r", "", -1)
-		hostName = strings.Replace(hostName, "\n", "", -1)
-		privateIp := ""
-		if len(hostName) > 0 {
-			f := filters.NewArgs()
-			f.Add("name", hostName)
-			nodes, err := mc.NodeListA(types.NodeListOptions{
-				Filters: f,
-			})
-			if err == nil {
-				bReady := false
-				for _, node := range nodes {
-					role := fmt.Sprintf("%s", node.Spec.Role)
-					if role == "manager" {
-						if node.ManagerStatus != nil && (node.Status.State == "ready" || node.ManagerStatus.Reachability == "Reachable") {
-							bReady = true
-							privateIp = node.Status.Addr
-							break
-						}
-					} else {
-						if node.Status.State == "ready" {
-							bReady = true
-							privateIp = node.Status.Addr
-							break
-						}
-					}
-				}
-				if bReady == true {
-					var tvps models.TVps
-					o := orm.NewOrm()
-					qs := o.QueryTable("t_vps")
-					err := qs.Filter("privateIp", privateIp).One(&tvps)
-					if err == nil {
-						var tnode models.TNode
-						o = orm.NewOrm()
-						qs = o.QueryTable("t_node")
-						err = qs.Filter("coinName", coinName).Filter("rpcPort", rpcPort).One(&tnode)
-						if err == nil {
-							tnode.PublicIp = tvps.PublicIp
-							tnode.PrivateIp = tvps.PrivateIp
-							o.Update(&tnode)
-							log.Printf("success get node ip:%s-%s", tvps.PublicIp, tvps.PrivateIp)
-						}
-					}
-				}
-			}
-		}
-	}*/
-
 	return nil
 }
 
@@ -236,7 +153,7 @@ func NodeReadyData(publicIp, privateIp, coinName string, rpcPort int, wg *sync.W
 	qs := o.QueryTable("t_coin")
 	err := qs.Filter("name", coinName).Filter("status", "Enabled").One(&tcoin)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	var tnode models.TNode
@@ -244,25 +161,19 @@ func NodeReadyData(publicIp, privateIp, coinName string, rpcPort int, wg *sync.W
 	qs = o.QueryTable("t_node")
 	err = qs.Filter("coinName", coinName).Filter("rpcPort", rpcPort).One(&tnode)
 	if err != nil {
-		return err
-	}
-	/*tnode.Status = "processing"
-	o.Update(&tnode)
-	if err != nil {
 		panic(err)
 	}
 
-	var torder models.TOrder
+	var tvps models.TVps
 	o = orm.NewOrm()
-	qs = o.QueryTable("t_order")
-	err = qs.Filter("id", tnode.Order.Id).One(&torder)
+	qs = o.QueryTable("t_vps")
+	err = qs.Filter("privateIp", privateIp).One(&tvps)
 	if err != nil {
 		panic(err)
-	}*/
+	}
 
-	client := SshNewClient(publicIp, privateIp, mnhostTypes.SSH_PASSWORD)
+	/*client := SshNewClient(publicIp, privateIp, mnhostTypes.SSH_PASSWORD)
 	if client == nil {
-		log.Printf("client****%s\n", client)
 		panic(errors.New("client no connect"))
 	}
 	defer client.Close()
@@ -271,7 +182,6 @@ func NodeReadyData(publicIp, privateIp, coinName string, rpcPort int, wg *sync.W
 	fmt.Printf("cmd:%s\n", cmd)
 	result, err := client.Execute(cmd)
 	if err != nil {
-		log.Printf("err1****#########%s\n", err)
 		panic(err)
 	}
 
@@ -309,12 +219,6 @@ func NodeReadyData(publicIp, privateIp, coinName string, rpcPort int, wg *sync.W
 				if err != nil {
 					panic(err)
 				}
-				/*cmd = fmt.Sprintf("chmod 777 -R %s", destPath)
-				fmt.Printf("cmd:%s\n", cmd)
-				_, err = client.Execute(cmd)
-				if err != nil {
-					panic(err)
-				}*/
 			}
 		}
 
@@ -325,9 +229,18 @@ func NodeReadyData(publicIp, privateIp, coinName string, rpcPort int, wg *sync.W
 		cmd = fmt.Sprintf("rm %s/%s/%s", destPath, tcoin.Path, "testnet3/.lock")
 		fmt.Printf("cmd:%s\n", cmd)
 		client.Execute(cmd)
+	}*/
+
+	volumeId := ""
+	if tnode.VolumeId == "" {
+		volumeId, err = VolumeReady(tvps.RegionName, tcoin.SnapshotId, tnode.InstanceId, tnode.DeviceName)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	o = orm.NewOrm()
+	tnode.VolumeId = volumeId
 	tnode.Status = "wait-conf"
 	o.Update(&tnode)
 	if err != nil {
@@ -335,6 +248,85 @@ func NodeReadyData(publicIp, privateIp, coinName string, rpcPort int, wg *sync.W
 	}
 
 	log.Printf("success ready data %s%d\n", coinName, rpcPort)
+	return nil
+}
+
+func NodeRemoveData(publicIp, privateIp, coinName string, rpcPort int) error {
+	defer func() { //匿名函数捕获错误
+		err := recover()
+		if err != nil {
+			log.Printf("remove data error:%+v\n", err)
+		}
+	}()
+
+	log.Printf("start remove data %s%d-%s\n", coinName, rpcPort, publicIp)
+
+	var tcoin models.TCoin
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_coin")
+	err := qs.Filter("name", coinName).Filter("status", "Enabled").One(&tcoin)
+	if err != nil {
+		panic(err)
+	}
+
+	var tnode models.TNode
+	o = orm.NewOrm()
+	qs = o.QueryTable("t_node")
+	err = qs.Filter("coinName", coinName).Filter("rpcPort", rpcPort).One(&tnode)
+	if err != nil {
+		panic(err)
+	}
+
+	var tvps models.TVps
+	o = orm.NewOrm()
+	qs = o.QueryTable("t_vps")
+	err = qs.Filter("privateIp", privateIp).One(&tvps)
+	if err != nil {
+		panic(err)
+	}
+
+	basicResponse := &mnhostTypes.BasicResponse{}
+	request := gorequest.New().Timeout(5000 * time.Millisecond)
+	ipAddress := privateIp
+	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
+		ipAddress = publicIp
+	}
+
+	nodeName := fmt.Sprintf("%s%d", coinName, rpcPort)
+	url := fmt.Sprintf("http://%s:%d/UmountEbs", ipAddress, mnhostTypes.SYS_MONITOR_PORT)
+	params := &mnhostTypes.NameRequest{
+		Name: nodeName,
+	}
+	resp, _, _ := request.Post(url).
+		SendStruct(params).
+		EndStruct(&basicResponse)
+	log.Printf("umount:%+v\n", resp)
+	/*if err1 != nil {
+		panic(errors.New("umount ebs error"))
+	} else {
+		if resp.StatusCode != 200 {
+			panic(errors.New(resp.Status))
+		}
+
+		if basicResponse.Code != "200" {
+			panic(errors.New(basicResponse.CodeMsg))
+		}
+	}*/
+
+	log.Printf("volume remove:%s-%s-%s-%s\n", tvps.RegionName, tnode.VolumeId, tnode.InstanceId, tnode.DeviceName)
+	err = VolumeRemove(tvps.RegionName, tnode.VolumeId, tnode.InstanceId, tnode.DeviceName)
+	if err != nil {
+		log.Printf("volume remove:%+v\n", err)
+		panic(err)
+	}
+
+	o = orm.NewOrm()
+	_, err = o.Delete(&tnode)
+	if err != nil {
+		panic(err)
+	}
+
+	log.Printf("success remove data %s%d\n", coinName, rpcPort)
 	return nil
 }
 
@@ -348,76 +340,8 @@ func GetVpsResource(publicIp, privateIp, role string, inputQ chan mnhostTypes.Re
 	defer func() {
 		inputQ <- resourceInfo
 	}()
-	//log.Printf("get vps cpu memory from %s\n", publicIp)
-	/*client := SshNewClient(publicIp, privateIp, mnhostTypes.SSH_PASSWORD)
-	if client == nil {
-		return -1, -1, errors.New("client no connect")
-	}
-	defer client.Close()
 
-	cmd := "free -m  | awk -F '[ :]+' 'NR==2{print $2,$7}'"
-	fmt.Printf("cmd:%s\n", cmd)
-	result, err := client.Execute(cmd)
-	if err != nil {
-		log.Printf("err:%+v\n", err)
-		return -1, -1, err
-	}
-
-	resp := fmt.Sprintf("%s", result.Stdout())
-
-	resp1 := strings.Split(resp, " ")
-	if len(resp1) < 2 {
-		return -1, -1, errors.New("params error")
-	}
-
-	totalMemory := strings.Replace(resp1[0], "\r", "", -1)
-	totalMemory = strings.Replace(totalMemory, "\n", "", -1)
-
-	availMemory := strings.Replace(resp1[1], "\r", "", -1)
-	availMemory = strings.Replace(availMemory, "\n", "", -1)
-
-	if len(totalMemory) > 0 && len(availMemory) > 0 {
-		total, err := strconv.ParseInt(totalMemory, 10, 64)
-		if err != nil {
-			return -1, -1, err
-		}
-		avail, err := strconv.ParseInt(availMemory, 10, 64)
-		if err != nil {
-			return -1, -1, err
-		}
-
-		tmp := fmt.Sprintf("%.2f", float64(avail)/float64(total))
-		tmp1, err := strconv.ParseFloat(tmp, 64)
-		if err != nil {
-			return -1, -1, err
-		}
-		mem = int(tmp1 * 100)
-	}
-
-	log.Printf("%s-%s-%d", totalMemory, availMemory, mem)
-
-	cmd = "top -n 1 | awk -F '[ %]+' 'NR==3 {print $9}'"
-	fmt.Printf("cmd:%s\n", cmd)
-	result, err = client.Execute(cmd)
-	if err != nil {
-		log.Printf("err:%+v\n", err)
-		return mem, -1, err
-	}
-
-	resp = fmt.Sprintf("%s", result.Stdout())
-	if len(resp) < 2 {
-		return mem, -1, errors.New("params error")
-	}
-	resp = resp[:2]
-	cpu1, err := strconv.ParseInt(resp, 10, 64)
-	if err != nil {
-		log.Printf("err:%+v\n", err)
-		return mem, -1, err
-	}
-	//cpu := int(math.Floor(tmp1 + 0.5))
-	cpu = int(cpu1)*/
-
-	request := gorequest.New()
+	request := gorequest.New().Timeout(5000 * time.Millisecond)
 	ipAddress := privateIp
 	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
 		ipAddress = publicIp
@@ -443,14 +367,19 @@ func GetVpsResource(publicIp, privateIp, role string, inputQ chan mnhostTypes.Re
 func NodeReadyConfig(publicIp, privateIp, coinName string, rpcPort int, wg *sync.WaitGroup) error {
 	defer func() { //匿名函数捕获错误
 		wg.Done()
+		err := recover()
+		if err != nil {
+			log.Printf("ready config error:%+v\n", err)
+		}
 	}()
 
+	log.Printf("ready config:%s%d", coinName, rpcPort)
 	var tcoin models.TCoin
 	o := orm.NewOrm()
 	qs := o.QueryTable("t_coin")
 	err := qs.Filter("name", coinName).Filter("status", "Enabled").One(&tcoin)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	var tnode models.TNode
@@ -458,7 +387,7 @@ func NodeReadyConfig(publicIp, privateIp, coinName string, rpcPort int, wg *sync
 	qs = o.QueryTable("t_node")
 	err = qs.Filter("coinName", coinName).Filter("rpcPort", rpcPort).One(&tnode)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	var torder models.TOrder
@@ -466,48 +395,17 @@ func NodeReadyConfig(publicIp, privateIp, coinName string, rpcPort int, wg *sync
 	qs = o.QueryTable("t_order")
 	err = qs.Filter("id", tnode.Order.Id).One(&torder)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	/*client := SshNewClient(publicIp, privateIp, mnhostTypes.SSH_PASSWORD)
-	if client == nil {
-		return errors.New("client no connect")
-	}
-	defer client.Close()
-
-	destPath := fmt.Sprintf("%s/%s/%s%d", mnhostTypes.NFS_PATH, coinName, mnhostTypes.NODE_PREFIX, rpcPort)
-	cmd := fmt.Sprintf("sed -i '/^rpcport/c rpcport='%d'' %s/%s/%s", rpcPort, destPath, tcoin.Path, tcoin.Conf)
-	log.Printf("cmd:%s\n", cmd)
-	_, err = client.Execute(cmd)
+	nodeName := fmt.Sprintf("%s%d", coinName, rpcPort)
+	err = EbsMount(tnode.PublicIp, tnode.PrivateIp, tnode.DeviceName, nodeName)
 	if err != nil {
-		return err
+		panic(err)
 	}
-
-	cmd = fmt.Sprintf("sed -i '/^port/c port='%d'' %s/%s/%s", rpcPort+1, destPath, tcoin.Path, tcoin.Conf)
-	log.Printf("cmd:%s\n", cmd)
-	_, err = client.Execute(cmd)
-	if err != nil {
-		return err
-	}
-
-	cmd = fmt.Sprintf("sed -i '/masternodeblsprivkey/c masternodeblsprivkey='%s'' %s/%s/%s", torder.Mnkey, destPath, tcoin.Path, tcoin.Conf)
-	log.Printf("cmd:%s\n", cmd)
-	_, err = client.Execute(cmd)
-	if err != nil {
-		log.Printf("aaa3:%+v\n", err)
-		return err
-	}
-
-	cmd = fmt.Sprintf("sed -i '/externalip/c externalip='%s'' %s/%s/%s", tnode.PublicIp, destPath, tcoin.Path, tcoin.Conf)
-	log.Printf("cmd:%s\n", cmd)
-	_, err = client.Execute(cmd)
-	if err != nil {
-		log.Printf("aaa2:%+v\n", err)
-		return err
-	}*/
 
 	basicResponse := &mnhostTypes.BasicResponse{}
-	request := gorequest.New()
+	request := gorequest.New().Timeout(5000 * time.Millisecond)
 	ipAddress := privateIp
 	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
 		ipAddress = publicIp
@@ -528,14 +426,14 @@ func NodeReadyConfig(publicIp, privateIp, coinName string, rpcPort int, wg *sync
 		EndStruct(&basicResponse)
 	log.Printf("resp***:%+v\n", resp)
 	if err1 != nil {
-		return err
+		panic(err)
 	} else {
 		if resp.StatusCode != 200 {
-			return errors.New(resp.Status)
+			panic(errors.New(resp.Status))
 		}
 
 		if basicResponse.Code != "200" {
-			return errors.New(basicResponse.CodeMsg)
+			panic(errors.New(basicResponse.CodeMsg))
 		}
 	}
 
@@ -564,22 +462,22 @@ func NodeReadyConfig(publicIp, privateIp, coinName string, rpcPort int, wg *sync
 
 	mpublicIp, mprivateIp, err := GetVpsIp("cluster1")
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	mc, _, err := DockerNewClient(mpublicIp, mprivateIp)
 	if err != nil {
-		return err
+		panic(err)
 	}
 	defer mc.Close()
 
 	log.Printf("***remove service %s%d\n", coinName, rpcPort)
 	err = mc.ServiceRemoveA(coinName, rpcPort)
 	if err != nil {
-		log.Printf("ppp:%+v\n", err)
+		log.Printf("remove service error:%+v\n", err)
 		errInfo := fmt.Sprintf("service %s%d not found", coinName, rpcPort)
-		if !strings.ContainsAny(err.Error(), errInfo) == true {
-			return err
+		if !strings.Contains(err.Error(), errInfo) {
+			panic(err)
 		}
 	} else {
 		log.Printf("***wait restart %s%d\n", coinName, rpcPort)
@@ -596,11 +494,10 @@ func NodeReadyConfig(publicIp, privateIp, coinName string, rpcPort int, wg *sync
 	tnode.Status = "finish"
 	o.Update(&tnode)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	log.Println("success ready config")
-
+	log.Printf("success ready config %s%d", coinName, rpcPort)
 	return nil
 }
 
@@ -648,7 +545,7 @@ func UpdateVpsLeader(clusterName, privateIp string) error {
 
 func EfsMount(publicIp, privateIp, password string) error {
 	basicResponse := &mnhostTypes.BasicResponse{}
-	request := gorequest.New()
+	request := gorequest.New().Timeout(5000 * time.Millisecond)
 	ipAddress := privateIp
 	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
 		ipAddress = publicIp
@@ -666,6 +563,112 @@ func EfsMount(publicIp, privateIp, password string) error {
 			return errors.New(basicResponse.CodeMsg)
 		}
 	}
+
+	return nil
+}
+
+func EbsMount(publicIp, privateIp, deviceName, nodeName string) error {
+	basicResponse := &mnhostTypes.BasicResponse{}
+	request := gorequest.New().Timeout(5000 * time.Millisecond)
+	ipAddress := privateIp
+	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
+		ipAddress = publicIp
+	}
+	url := fmt.Sprintf("http://%s:%d/MountEbs", ipAddress, mnhostTypes.SYS_MONITOR_PORT)
+	params := &mnhostTypes.MountRequest{
+		DeviceName: deviceName,
+		NodeName:   nodeName,
+	}
+	resp, _, err1 := request.Post(url).
+		SendStruct(params).
+		EndStruct(&basicResponse)
+	if err1 != nil {
+		return errors.New("findnode error")
+	} else {
+		if resp.StatusCode != 200 {
+			return errors.New(resp.Status)
+		}
+
+		if basicResponse.Code != "200" {
+			return errors.New(basicResponse.CodeMsg)
+		}
+	}
+	return nil
+}
+
+func GetPublicIpFromVps(privateIp string) (string, string, string, error) {
+	var tvps models.TVps
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_vps")
+	err := qs.Filter("privateIp", privateIp).One(&tvps)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	return tvps.PublicIp, tvps.InstanceId, tvps.RegionName, nil
+}
+
+func VolumeReady(zone, snapshotId, instanceId, deviceName string) (string, error) {
+	c, err := uec2.NewEc2Client(mnhostTypes.ZONE_DEFAULT, mnhostTypes.AWS_ACCOUNT)
+	if err != nil {
+		return "", err
+	}
+
+	result, err := c.SnapshotsDescribe(snapshotId)
+	if err != nil {
+		return "", err
+	}
+	log.Println(result)
+
+	volumeId, err := c.CreateVolumes(zone, snapshotId, aws.Int64Value(result.Snapshots[0].VolumeSize))
+	if err != nil {
+		return "", err
+	}
+	log.Printf("volumeId:%s\n", volumeId)
+
+	err = c.WaitUntilVolumeAvailables([]string{volumeId})
+	if err != nil {
+		return "", err
+	}
+	log.Printf("create volume wait finish:%s\n", volumeId)
+
+	resp, err := c.AttachVolumes(instanceId, volumeId, deviceName)
+	if err != nil {
+		return "", err
+	}
+
+	err = c.WaitUntilVolumeAttach(20, volumeId)
+	if err != nil {
+		return "", err
+	}
+
+	log.Printf("attach volume :%s\n", aws.StringValue(resp.VolumeId))
+	return aws.StringValue(resp.VolumeId), nil
+}
+
+func VolumeRemove(zone, volumeId, instanceId, deviceName string) error {
+	c, err := uec2.NewEc2Client(mnhostTypes.ZONE_DEFAULT, mnhostTypes.AWS_ACCOUNT)
+	if err != nil {
+		return err
+	}
+
+	resp1, err := c.DetachVolumes(instanceId, volumeId, deviceName)
+	if err != nil {
+		return err
+	}
+	log.Printf("detach volume :%+v\n", resp1)
+
+	err = c.WaitUntilVolumeAvailables([]string{volumeId})
+	if err != nil {
+		return err
+	}
+	log.Printf("create volume wait finish:%s\n", volumeId)
+
+	resp, err := c.DeleteVolumes(volumeId)
+	if err != nil {
+		return err
+	}
+	log.Printf("del volume:%+v\n", resp)
 
 	return nil
 }

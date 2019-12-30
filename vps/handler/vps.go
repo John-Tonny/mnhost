@@ -376,8 +376,10 @@ func (e *Vps) GetAllNodeFromUser(ctx context.Context, req *vps.Request, rsp *vps
 func (e *Vps) processCreateVps(clusterName, role string, volumeSize int64) error {
 	log.Printf("process create Vps from cluster:%s, role:%s, size:%d\n", clusterName, role, volumeSize)
 
+	bAllocation := true
+	bVolume := false
 	var vpsInfo *mnhostTypes.VpsInfo
-	vpsInfo, errcode, err := NewVps(mnhostTypes.SYSTEM_IMAGE, mnhostTypes.ZONE_DEFAULT, mnhostTypes.INSTANCE_TYPE_DEFAULT, clusterName, role, volumeSize, false, false)
+	vpsInfo, errcode, err := NewVps(mnhostTypes.SYSTEM_IMAGE, mnhostTypes.ZONE_DEFAULT, mnhostTypes.INSTANCE_TYPE_DEFAULT, clusterName, role, volumeSize, bAllocation, bVolume)
 	if err != nil {
 		e.pubErrMsg("", "newvps", errcode, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
 		return nil
@@ -825,37 +827,27 @@ func NewNode(orderId int64, clusterName string) (string, error) {
 		return utils.RECODE_NODATA, err
 	}
 
+	publicIp, privateIp, instanceId, _, err := AllocateVps()
+	if err != nil {
+		return utils.SERVICE_NEW_ERR, err
+	}
+
 	mutex.Lock()
 	rpcport, port, err := getRpcPort()
 	if err != nil {
 		return utils.PORT_ERR, err
 	}
-	//log.Println(port)
-	/*publicIp, privateIp, err := common.GetVpsIp(clusterName)
+
+	deviceName, err := GetDeviceName(privateIp)
 	if err != nil {
-		return utils.MANAGER_ERR, err
+		return utils.PORT_ERR, err
 	}
 
-	errcode, err := ReadyNodeData(torder.Coinname, rpcport, torder.Mnkey, publicIp, privateIp)
-	if err != nil {
-		return errcode, err
-	}
-
-	mc, _, err := common.DockerNewClient(publicIp, privateIp)
-	if err != nil {
-		return utils.DOCKER_CONNECT_ERR, err
-	}
-	defer mc.Close()
-
-	err = mc.ServiceCreateA(torder.Coinname, rpcport, tcoin.Docker)
-	if err != nil {
-		return utils.SERVICE_NEW_ERR, err
-	}*/
-
-	publicIp, privateIp, err := AllocateVps()
-	if err != nil {
-		return utils.SERVICE_NEW_ERR, err
-	}
+	/*
+		err = common.VolumeReady(regionName, tcoin.SnapshotId, instanceId, deviceName)
+		if err != nil {
+			return utils.PORT_ERR, err
+		}*/
 
 	var tnode models.TNode
 	tnode.ClusterName = clusterName
@@ -866,6 +858,8 @@ func NewNode(orderId int64, clusterName string) (string, error) {
 	tnode.Order = &torder
 	tnode.PublicIp = publicIp
 	tnode.PrivateIp = privateIp
+	tnode.InstanceId = instanceId
+	tnode.DeviceName = deviceName
 	tnode.Status = "wait-data"
 	o = orm.NewOrm()
 	_, err = o.Insert(&tnode)
@@ -905,7 +899,8 @@ func DelNode(nodeId int64, clusterName string) (string, error) {
 	_, err = mc.ServiceInspectA(nodeName)
 	if err != nil {
 		bError := true
-		if strings.ContainsAny(err.Error(), "No such service") == true {
+		log.Printf("%+v\n", err)
+		if strings.Contains(err.Error(), "No such service") == true {
 			bError = false
 		}
 		if bError {
@@ -918,17 +913,22 @@ func DelNode(nodeId int64, clusterName string) (string, error) {
 		}
 	}
 
-	var tcoin models.TCoin
+	/*var tcoin models.TCoin
 	o = orm.NewOrm()
 	qs = o.QueryTable("t_coin")
 	err = qs.Filter("name", tnode.CoinName).Filter("port", tnode.RpcPort).One(&tcoin)
 	if err != nil {
-		log.Printf("******")
+		log.Printf("%+v\n", err)
 		errcode, err := NodeRemoveData(tnode.CoinName, tnode.RpcPort, publicIp, privateIp)
 		if err != nil {
 			log.Printf("remove data error:%s-%+v\n", errcode, err)
 			return errcode, err
 		}
+	}*/
+
+	err = common.NodeRemoveData(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.RpcPort)
+	if err != nil {
+		return "", err
 	}
 
 	o = orm.NewOrm()
@@ -1055,6 +1055,40 @@ func getRpcPort() (int, int, error) {
 func portExist(port int, tnodes *[]models.TNode) bool {
 	for _, node := range *tnodes {
 		if node.RpcPort == port {
+			return true
+		}
+	}
+	return false
+}
+
+func GetDeviceName(privateIp string) (string, error) {
+	deviceName := mnhostTypes.DEVICE_NAME_FROM[0]
+
+	var tnodes []models.TNode
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_node")
+	nums, err := qs.Filter("privateIp", privateIp).All(&tnodes)
+	if err != nil {
+		return "", err
+	}
+	if nums == 0 {
+		return fmt.Sprintf("xvd%s", string(deviceName)), nil
+	}
+
+	var i byte
+	for i = 0; i < 20; i++ {
+		tmp := fmt.Sprintf("xvd%s", string(deviceName+i))
+		log.Printf("devicename:%s\n", tmp)
+		if deviceExist(tmp, &tnodes) == false {
+			return tmp, nil
+		}
+	}
+	return "", errors.New("volume is full")
+}
+
+func deviceExist(deviceName string, tnodes *[]models.TNode) bool {
+	for _, node := range *tnodes {
+		if node.DeviceName == deviceName {
 			return true
 		}
 	}
@@ -1199,8 +1233,11 @@ func Init(clusterName string) error {
 		}
 
 		for _, result := range results.Reservations {
-			nums++
 			log.Printf("%+v\n", result)
+			if aws.StringValue(result.Instances[0].State.Name) == "terminated" {
+				continue
+			}
+			nums++
 			tvps := models.TVps{}
 			tvps.AllocationId = ""
 			tvps.InstanceId = aws.StringValue(result.Instances[0].InstanceId)
@@ -1244,11 +1281,30 @@ func Init(clusterName string) error {
 			return err
 		}
 
-		err = common.EfsMount(tvps.PublicIp, tvps.PrivateIp, mnhostTypes.SSH_PASSWORD)
+		/*var tnodes []models.TNode
+		o = orm.NewOrm()
+		qs = o.QueryTable("t_node")
+		nums1, err := qs.Filter("privateIp", tvps.PrivateIp).All(&tnodes)
+		if err != nil {
+			continue
+		}
+		if nums1 == 0 {
+			continue
+		}
+
+		for _, tnode := range tnodes {
+			nodeName := fmt.Sprintf("%s%d", tnode.CoinName, tnode.RpcPort)
+			err := common.EbsMount(tnode.PublicIp, tnode.PrivateIp, tnode.DeviceName, nodeName)
+			if err != nil {
+				panic(err)
+			}
+		}*/
+
+		/*err = common.EfsMount(tvps.PublicIp, tvps.PrivateIp, mnhostTypes.SSH_PASSWORD)
 		if err != nil {
 			log.Fatalf("init: mount efs :%+v!\n", err)
 			return err
-		}
+		}*/
 	}
 
 	if nums < mnhostTypes.INIT_MANAGER_NUMS {
@@ -1294,7 +1350,7 @@ func Init(clusterName string) error {
 func InitNewVps(clusterName string) error {
 	role := mnhostTypes.ROLE_MANAGER
 	volumeSize := int64(0)
-	bAllocation := false
+	bAllocation := true
 	bVolume := false
 
 	mpublicIp := ""
@@ -1326,10 +1382,10 @@ func InitNewVps(clusterName string) error {
 		mprivateIp = vpsInfo.PrivateIp
 	}
 
-	err = common.EfsMount(vpsInfo.PublicIp, vpsInfo.PrivateIp, mnhostTypes.SSH_PASSWORD)
+	/*err = common.EfsMount(vpsInfo.PublicIp, vpsInfo.PrivateIp, mnhostTypes.SSH_PASSWORD)
 	if err != nil {
 		return err
-	}
+	}*/
 
 	mc, _, err := common.DockerNewClient(mpublicIp, mprivateIp)
 	if err != nil {
@@ -1443,7 +1499,7 @@ func InitNewVps(clusterName string) error {
 	return "", nil
 }*/
 
-func NodeRemoveData(coinName string, rpcport int, publicIp, privateIp string) (string, error) {
+/*func NodeRemoveData(coinName string, rpcport int, publicIp, privateIp string) (string, error) {
 	log.Printf("start remove data %s%d\n", coinName, rpcport)
 
 	client := common.SshNewClient(publicIp, privateIp, mnhostTypes.SSH_PASSWORD)
@@ -1470,19 +1526,21 @@ func NodeRemoveData(coinName string, rpcport int, publicIp, privateIp string) (s
 		time.Sleep(time.Second * 5)
 	}
 	return "", errors.New("remove data timeout")
-}
 
-func AllocateVps() (string, string, error) {
+}
+*/
+
+func AllocateVps() (string, string, string, string, error) {
 	var tvpss []models.TVps
 	o := orm.NewOrm()
 	qs := o.QueryTable("t_vps")
 	nums, err := qs.All(&tvpss)
 	if err != nil {
-		return "", "", err
+		return "", "", "", "", err
 	}
 
 	if nums == 0 {
-		return "", "", errors.New("no vps")
+		return "", "", "", "", errors.New("no vps")
 	}
 
 	type NodeInfo struct {
@@ -1497,7 +1555,7 @@ func AllocateVps() (string, string, error) {
 		qs = o.QueryTable("t_node")
 		nodenums, err := qs.Filter("privateIp", tvps.PrivateIp).All(&tnodes)
 		if err != nil {
-			return "", "", err
+			return "", "", "", "", err
 		}
 		nodes = append(nodes, NodeInfo{tvps.PrivateIp, int(nodenums)})
 	}
@@ -1506,22 +1564,10 @@ func AllocateVps() (string, string, error) {
 		return nodes[i].Nums < nodes[j].Nums // 升序
 		//return nodes[i].Nums > nodes[j].Nums // 降序
 	})
-	publicIp, err := GetPublicIpFromVps(nodes[0].PrivateIp)
+	publicIp, instanceId, regionName, err := common.GetPublicIpFromVps(nodes[0].PrivateIp)
 	if err != nil {
-		return "", nodes[0].PrivateIp, err
+		return "", nodes[0].PrivateIp, "", "", err
 	}
 
-	return publicIp, nodes[0].PrivateIp, nil
-}
-
-func GetPublicIpFromVps(privateIp string) (string, error) {
-	var tvps models.TVps
-	o := orm.NewOrm()
-	qs := o.QueryTable("t_vps")
-	err := qs.Filter("privateIp", privateIp).One(&tvps)
-	if err != nil {
-		return "", err
-	}
-
-	return tvps.PublicIp, nil
+	return publicIp, nodes[0].PrivateIp, instanceId, regionName, nil
 }

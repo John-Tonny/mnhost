@@ -104,9 +104,10 @@ func (c *DockerClient) ServiceCreateA(coinName string, rpcport int, dockerId, pr
 				Mounts: []mount.Mount{
 					{
 						ReadOnly: false,
-						Source:   fmt.Sprintf("%s/%s/%s%d", mnhostTypes.NFS_PATH, coinName, mnhostTypes.NODE_PREFIX, rpcport),
-						Target:   "/vircle",
-						Type:     "bind",
+						Source:   fmt.Sprintf("%s/%s%d", mnhostTypes.MOUNT_PATH, coinName, rpcport),
+						//Source:   fmt.Sprintf("%s/%s/%s%d", mnhostTypes.NFS_PATH, coinName, mnhostTypes.NODE_PREFIX, rpcport),
+						Target: "/vircle",
+						Type:   "bind",
 					},
 				},
 				/*Labels: map[string]string{
@@ -175,9 +176,10 @@ func (c *DockerClient) ServiceUpdateA(coinName string, rpcport int, dockerId str
 				Mounts: []mount.Mount{
 					{
 						ReadOnly: false,
-						Source:   fmt.Sprintf("%s/%s/%s%d", mnhostTypes.NFS_PATH, coinName, mnhostTypes.NODE_PREFIX, rpcport),
-						Target:   "/vircle",
-						Type:     "bind",
+						Source:   fmt.Sprintf("%s/%s%d", mnhostTypes.MOUNT_PATH, coinName, rpcport),
+						//Source:   fmt.Sprintf("%s/%s/%s%d", mnhostTypes.NFS_PATH, coinName, mnhostTypes.NODE_PREFIX, rpcport),
+						Target: "/vircle",
+						Type:   "bind",
 					},
 				},
 				/*Labels: map[string]string{
@@ -290,7 +292,11 @@ func GetVpsIp(clusterName string) (string, string, error) {
 					log.Printf("aaaaa:%+v\n", err)
 					continue
 				}
-				publicIp = tvps.PublicIp
+				publicIp, _, _, err = GetPublicIpFromVps(privateIp)
+				if err != nil {
+					return "", privateIp, err
+				}
+				//publicIp = common. tvps.PublicIp
 				log.Printf("ip:%s-%s\n", publicIp, privateIp)
 				return publicIp, privateIp, nil
 			}

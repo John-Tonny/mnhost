@@ -14,12 +14,8 @@ const serviceName = "vps"
 func main() {
 	log.Println("vps start")
 
-	pub, pri, err := handler.AllocateVps()
-	if err != nil {
-		log.Println(err)
-	} else {
-		log.Printf("****ip:%s-%s", pub, pri)
-	}
+	//devicename, _ := handler.GetDeviceName("172.31.46.50")
+	//log.Printf("dev:%s\n", devicename)
 
 	handler.Init("cluster1")
 

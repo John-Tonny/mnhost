@@ -57,6 +57,9 @@ type TNode struct {
 	Port        int       `json:"port"`                                         //rpc端口号
 	PublicIp    string    `orm:"size(64)" json:"public_ip"`                     //主机公共IP
 	PrivateIp   string    `orm:"size(64)" json:"private_ip"`                    //主机私有IP
+	InstanceId  string    `orm:"size(64)" json:"instance_id"`                   //实例ID
+	VolumeId    string    `orm:"size(64)" json:"volume_id"`                     //EBS卷标Id
+	DeviceName  string    `orm:"size(64)" json:"device_name"`                   //设备名称
 	State       string    `orm:"size(64)" json:"state"`                         //主节点状态
 	Status      string    `orm:"size(64)" json:"staus"`                         //系统状态 (配置和数据准备)
 	Createtime  time.Time `orm:"auto_now_add;type(datetime)" json:"createtime"` //创建时间
@@ -69,7 +72,7 @@ type TCoin struct {
 	Name       string    `orm:"size(32);unique" json:"name"`                   //币名称
 	Path       string    `orm:"size(32);unique" json:"path"`                   //节点缺省安装路径
 	Conf       string    `orm:"size(32);unique" json:"conf"`                   //节点缺省配置文件名称
-	FilePath   string    `orm:"size(128);unique" json:"file_path"`             //上传节点docker文件的路径
+	SnapshotId string    `orm:"size(128);unique" json:"snapshot_id"`           //上传节点快照id
 	Docker     string    `orm:"size(32);unique" json:"docker"`                 //主节点docker名称
 	Status     string    `orm:"default(Enabled)" json:"staus"`                 //状态
 	Port       int       `json:"port"`                                         //rpc端口(主)
