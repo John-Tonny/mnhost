@@ -307,6 +307,7 @@ func MonitorNode() error {
 
 		nodes, err := mc.NodeListA(types.NodeListOptions{})
 		if err != nil {
+			log.Printf("%+v\n", err)
 			DelayTime(startTime, 20, "monitor node time")
 		}
 

@@ -807,6 +807,7 @@ func DelVps(userId, instanceId string) (string, error) {
 
 func NewNode(orderId int64, clusterName string) (string, error) {
 	defer func() {
+		log.Printf("unlock %s\n", "***")
 		mutex.Unlock()
 	}()
 
@@ -827,27 +828,22 @@ func NewNode(orderId int64, clusterName string) (string, error) {
 		return utils.RECODE_NODATA, err
 	}
 
+	mutex.Lock()
 	publicIp, privateIp, instanceId, _, err := AllocateVps()
 	if err != nil {
 		return utils.SERVICE_NEW_ERR, err
 	}
 
-	mutex.Lock()
 	rpcport, port, err := getRpcPort()
+	log.Printf("lock %d\n", rpcport)
 	if err != nil {
 		return utils.PORT_ERR, err
 	}
 
-	deviceName, err := GetDeviceName(privateIp)
+	/*deviceName, err := common.GetDeviceName(privateIp, "")
 	if err != nil {
 		return utils.PORT_ERR, err
-	}
-
-	/*
-		err = common.VolumeReady(regionName, tcoin.SnapshotId, instanceId, deviceName)
-		if err != nil {
-			return utils.PORT_ERR, err
-		}*/
+	}*/
 
 	var tnode models.TNode
 	tnode.ClusterName = clusterName
@@ -859,7 +855,7 @@ func NewNode(orderId int64, clusterName string) (string, error) {
 	tnode.PublicIp = publicIp
 	tnode.PrivateIp = privateIp
 	tnode.InstanceId = instanceId
-	tnode.DeviceName = deviceName
+	//tnode.DeviceName = deviceName
 	tnode.Status = "wait-data"
 	o = orm.NewOrm()
 	_, err = o.Insert(&tnode)
@@ -1055,40 +1051,6 @@ func getRpcPort() (int, int, error) {
 func portExist(port int, tnodes *[]models.TNode) bool {
 	for _, node := range *tnodes {
 		if node.RpcPort == port {
-			return true
-		}
-	}
-	return false
-}
-
-func GetDeviceName(privateIp string) (string, error) {
-	deviceName := mnhostTypes.DEVICE_NAME_FROM[0]
-
-	var tnodes []models.TNode
-	o := orm.NewOrm()
-	qs := o.QueryTable("t_node")
-	nums, err := qs.Filter("privateIp", privateIp).All(&tnodes)
-	if err != nil {
-		return "", err
-	}
-	if nums == 0 {
-		return fmt.Sprintf("xvd%s", string(deviceName)), nil
-	}
-
-	var i byte
-	for i = 0; i < 20; i++ {
-		tmp := fmt.Sprintf("xvd%s", string(deviceName+i))
-		log.Printf("devicename:%s\n", tmp)
-		if deviceExist(tmp, &tnodes) == false {
-			return tmp, nil
-		}
-	}
-	return "", errors.New("volume is full")
-}
-
-func deviceExist(deviceName string, tnodes *[]models.TNode) bool {
-	for _, node := range *tnodes {
-		if node.DeviceName == deviceName {
 			return true
 		}
 	}

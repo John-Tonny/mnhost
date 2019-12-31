@@ -14,8 +14,17 @@ const serviceName = "vps"
 func main() {
 	log.Println("vps start")
 
-	//devicename, _ := handler.GetDeviceName("172.31.46.50")
-	//log.Printf("dev:%s\n", devicename)
+	/*devicename1 := "f"
+	for i := 0; i < 25; i++ {
+		devicename, err := common.GetDeviceName("172.31.46.50", devicename1)
+		if err != nil {
+			log.Panicf("dev:%s\n", err)
+		} else {
+			log.Printf("dev:%s-%s\n", devicename, devicename1)
+			devicename1 = devicename
+
+		}
+	}*/
 
 	handler.Init("cluster1")
 

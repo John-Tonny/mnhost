@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"sync"
 
 	//json "github.com/json-iterator/go"
 
@@ -44,32 +45,38 @@ func main() {
 		log.Println(resp)
 	}
 
-	/*for i := 0; i < 1; i++ {
-		go addnode(srv)
+	/*var wg sync.WaitGroup
+	wg.Add(11)
+	for i := 0; i < 9; i++ {
+		go addnode(srv, i, &wg)
 	}
-
-	for {
-
-	}*/
+	wg.Wait()*/
 
 }
 
-func addnode(srv micro.Service) {
-	log.Println("aaa")
+func addnode(srv micro.Service, nums int, wg *sync.WaitGroup) {
+	defer func() { //匿名函数捕获错误
+		wg.Done()
+		err := recover()
+		if err != nil {
+			log.Printf("ready config error:%+v\n", err)
+		}
+	}()
+
+	log.Printf("aaa:%d\n", nums)
 	client := pb.NewVpsService(serviceName, srv.Client())
-	resp, err := client.CreateNode(context.Background(), &pb.Request{
+	_, err := client.CreateNode(context.Background(), &pb.Request{
 		Id: "1",
 	})
 	if err != nil {
-		log.Printf("new node error: %v", err)
+		log.Printf("new node error: %v-%d", err, nums)
 	} else {
 		/*var msg interface{}
 		if err := json.Unmarshal(resp.Mix, &msg); err != nil {
 			log.Println(err)
 		}
 		log.Println("new node: ", msg)*/
-		log.Println(resp)
+		//log.Println(resp)
+		log.Printf("bbb:%d\n", nums)
 	}
-	log.Println("bbb")
-
 }

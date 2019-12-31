@@ -8,6 +8,7 @@ import (
 	//"time"
 
 	//"strings"
+	"sync"
 
 	//json "github.com/json-iterator/go"
 
@@ -140,8 +141,8 @@ func main() {
 	// 创建 user-service 微服务的客户端
 	client1 := pb.NewVpsService(serviceName, srv.Client())
 
-	start := 22
-	//stop := 371
+	start := 223
+	//stop := 220
 	starts := strconv.Itoa(start)
 	resp, err := client1.RemoveNode(context.Background(), &pb.Request{
 		Id: starts,
@@ -157,34 +158,43 @@ func main() {
 		log.Println("new node: ", msg)*/
 		log.Println(resp)
 	}
-
 	/*
+		var wg sync.WaitGroup
+		wg.Add(9)
 		for i := start + 1; i <= stop; i++ {
 			id := strconv.Itoa(i)
-			go delnode(id, srv)
+			go delnode(id, srv, &wg)
 		}
-
-		for {
-		}
+		wg.Wait()
 	*/
 }
 
-func delnode(id string, srv micro.Service) {
+func delnode(id string, srv micro.Service, wg *sync.WaitGroup) {
+	defer func() { //匿名函数捕获错误
+		wg.Done()
+		err := recover()
+		if err != nil {
+			log.Printf("ready config error:%+v\n", err)
+		}
+	}()
+
+	log.Printf("start:%s\n", id)
 	// 创建 user-service 微服务的客户端
 	client1 := pb.NewVpsService(serviceName, srv.Client())
 
-	resp, err := client1.RemoveNode(context.Background(), &pb.Request{
+	_, err := client1.RemoveNode(context.Background(), &pb.Request{
 		Id: id,
 	})
 
 	if err != nil {
-		log.Printf("new node error: %v", err)
+		log.Printf("new node error:%d---%v", id, err)
 	} else {
 		/*var msg interface{}
 		if err := json.Unmarshal(resp.Mix, &msg); err != nil {
 			log.Println(err)
 		}
 		log.Println("new node: ", msg)*/
-		log.Println(resp)
+		//log.Println(resp)
+		log.Printf("stop:%s\n", id)
 	}
 }

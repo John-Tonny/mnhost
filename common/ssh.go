@@ -172,77 +172,40 @@ func NodeReadyData(publicIp, privateIp, coinName string, rpcPort int, wg *sync.W
 		panic(err)
 	}
 
-	/*client := SshNewClient(publicIp, privateIp, mnhostTypes.SSH_PASSWORD)
-	if client == nil {
-		panic(errors.New("client no connect"))
-	}
-	defer client.Close()
-
-	cmd := fmt.Sprintf("find %s/%s/ -name %s", mnhostTypes.NFS_PATH, coinName, tcoin.Path)
-	fmt.Printf("cmd:%s\n", cmd)
-	result, err := client.Execute(cmd)
-	if err != nil {
-		panic(err)
-	}
-
-	sourcePath := ""
-	destPath := ""
-	resp := fmt.Sprintf("%s", result.Stdout())
-	for {
-		pos := strings.Index(resp, "\n")
-		if pos > 0 {
-			sourcePath = strings.Replace(resp[:pos], "\r", "", -1)
-			sourcePath = sourcePath[:len(sourcePath)-len(tcoin.Path)-1]
+	deviceName := ""
+	odeviceName := tnode.DeviceName
+	volumeId := ""
+	for i := 0; i < 21; i++ {
+		deviceName, err = GetDeviceName(privateIp, odeviceName)
+		if err != nil {
+			return err
 		}
-		break
-	}
-
-	if len(sourcePath) > 0 {
-		pos := strings.Index(sourcePath, tcoin.Path)
-		if pos > 0 {
-			sourcePath = sourcePath[:pos]
+		log.Printf("####start deviceName:%s=%d\n", deviceName, i)
+		volumeId, err = VolumeReady(tvps.RegionName, tcoin.SnapshotId, tnode.InstanceId, deviceName, tnode.VolumeId)
+		if err == nil {
+			break
 		}
-		destPath = fmt.Sprintf("%s/%s/%s%d", mnhostTypes.NFS_PATH, coinName, mnhostTypes.NODE_PREFIX, rpcPort)
-		if sourcePath != destPath {
-			cmd = fmt.Sprintf("find %s/%s/ -name %s%d", mnhostTypes.NFS_PATH, coinName, mnhostTypes.NODE_PREFIX, rpcPort)
-			fmt.Printf("cmd:%s\n", cmd)
-			result, err = client.Execute(cmd)
+		if tnode.VolumeId == "" {
+			o = orm.NewOrm()
+			tnode.VolumeId = volumeId
+			tnode.VolumeState = ""
+			_, err = o.Update(&tnode)
 			if err != nil {
+				log.Printf("######update error:%+v\n", err)
 				panic(err)
 			}
-			tmp := fmt.Sprintf("%s", result.Stdout())
-			tmp1 := fmt.Sprintf("%s%d", mnhostTypes.NODE_PREFIX, rpcPort)
-			if strings.Index(tmp, tmp1) < 0 {
-				cmd = fmt.Sprintf("cp -r %s %s", sourcePath, destPath)
-				fmt.Printf("cmd:%s\n", cmd)
-				_, err = client.Execute(cmd)
-				if err != nil {
-					panic(err)
-				}
-			}
 		}
-
-		cmd = fmt.Sprintf("rm %s/%s/%s", destPath, tcoin.Path, ".lock")
-		fmt.Printf("cmd:%s\n", cmd)
-		client.Execute(cmd)
-
-		cmd = fmt.Sprintf("rm %s/%s/%s", destPath, tcoin.Path, "testnet3/.lock")
-		fmt.Printf("cmd:%s\n", cmd)
-		client.Execute(cmd)
-	}*/
-
-	volumeId := ""
-	if tnode.VolumeId == "" {
-		volumeId, err = VolumeReady(tvps.RegionName, tcoin.SnapshotId, tnode.InstanceId, tnode.DeviceName)
-		if err != nil {
-			panic(err)
-		}
+		log.Printf("######get error:%+v\n", err)
+		odeviceName = deviceName
 	}
+	log.Printf("deviceName1:%s\n", deviceName)
 
 	o = orm.NewOrm()
+	tnode.DeviceName = deviceName
 	tnode.VolumeId = volumeId
+	tnode.VolumeState = "attached"
 	tnode.Status = "wait-conf"
-	o.Update(&tnode)
+	_, err = o.Update(&tnode)
 	if err != nil {
 		panic(err)
 	}
@@ -297,23 +260,27 @@ func NodeRemoveData(publicIp, privateIp, coinName string, rpcPort int) error {
 	params := &mnhostTypes.NameRequest{
 		Name: nodeName,
 	}
-	resp, _, _ := request.Post(url).
-		SendStruct(params).
-		EndStruct(&basicResponse)
-	log.Printf("umount:%+v\n", resp)
-	/*if err1 != nil {
-		panic(errors.New("umount ebs error"))
-	} else {
-		if resp.StatusCode != 200 {
-			panic(errors.New(resp.Status))
-		}
+	for i := 0; i < 5; i++ {
+		resp, _, err1 := request.Post(url).
+			SendStruct(params).
+			EndStruct(&basicResponse)
+		log.Printf("umount:%+v\n", resp)
+		if err1 != nil {
+			continue
+		} else {
+			if resp.StatusCode != 200 {
+				continue
+			}
 
-		if basicResponse.Code != "200" {
-			panic(errors.New(basicResponse.CodeMsg))
+			if basicResponse.Code != "200" {
+				continue
+			}
+			break
 		}
-	}*/
+	}
 
-	log.Printf("volume remove:%s-%s-%s-%s\n", tvps.RegionName, tnode.VolumeId, tnode.InstanceId, tnode.DeviceName)
+	deviceName := fmt.Sprintf("%s%s", mnhostTypes.DEVICE_NAME_PREFIX, tnode.DeviceName)
+	log.Printf("volume remove:%s-%s-%s-%s\n", tvps.RegionName, tnode.VolumeId, tnode.InstanceId, deviceName)
 	err = VolumeRemove(tvps.RegionName, tnode.VolumeId, tnode.InstanceId, tnode.DeviceName)
 	if err != nil {
 		log.Printf("volume remove:%+v\n", err)
@@ -399,7 +366,8 @@ func NodeReadyConfig(publicIp, privateIp, coinName string, rpcPort int, wg *sync
 	}
 
 	nodeName := fmt.Sprintf("%s%d", coinName, rpcPort)
-	err = EbsMount(tnode.PublicIp, tnode.PrivateIp, tnode.DeviceName, nodeName)
+	deviceName := fmt.Sprintf("%s%s", mnhostTypes.DEVICE_NAME_PREFIX, tnode.DeviceName)
+	err = EbsMount(tnode.PublicIp, tnode.PrivateIp, deviceName, nodeName)
 	if err != nil {
 		panic(err)
 	}
@@ -608,38 +576,58 @@ func GetPublicIpFromVps(privateIp string) (string, string, string, error) {
 	return tvps.PublicIp, tvps.InstanceId, tvps.RegionName, nil
 }
 
-func VolumeReady(zone, snapshotId, instanceId, deviceName string) (string, error) {
+func VolumeReady(zone, snapshotId, instanceId, deviceName, ovolumeId string) (string, error) {
 	c, err := uec2.NewEc2Client(mnhostTypes.ZONE_DEFAULT, mnhostTypes.AWS_ACCOUNT)
 	if err != nil {
 		return "", err
 	}
 
-	result, err := c.SnapshotsDescribe(snapshotId)
-	if err != nil {
-		return "", err
-	}
-	log.Println(result)
+	if ovolumeId == "" {
+		result, err := c.SnapshotsDescribe(snapshotId)
+		if err != nil {
+			return "", err
+		}
+		log.Println(result)
 
-	volumeId, err := c.CreateVolumes(zone, snapshotId, aws.Int64Value(result.Snapshots[0].VolumeSize))
-	if err != nil {
-		return "", err
-	}
-	log.Printf("volumeId:%s\n", volumeId)
+		volumeId, err := c.CreateVolumes(zone, snapshotId, aws.Int64Value(result.Snapshots[0].VolumeSize))
+		if err != nil {
+			return "", err
+		}
+		log.Printf("volumeId:%s\n", volumeId)
 
-	err = c.WaitUntilVolumeAvailables([]string{volumeId})
-	if err != nil {
-		return "", err
-	}
-	log.Printf("create volume wait finish:%s\n", volumeId)
-
-	resp, err := c.AttachVolumes(instanceId, volumeId, deviceName)
-	if err != nil {
-		return "", err
+		err = c.WaitUntilVolumeAvailables([]string{volumeId})
+		if err != nil {
+			return volumeId, err
+		}
+		log.Printf("create volume wait finish:%s\n", volumeId)
+		ovolumeId = volumeId
 	}
 
-	err = c.WaitUntilVolumeAttach(20, volumeId)
+	deviceName = fmt.Sprintf("/dev/%s%s", mnhostTypes.DEVICE_NAME_PREFIX, deviceName)
+	log.Printf("device***:%s\n", deviceName)
+	resp, err := c.AttachVolumes(instanceId, ovolumeId, deviceName)
 	if err != nil {
-		return "", err
+		return ovolumeId, err
+	}
+
+	err = c.WaitUntilVolumeAttach(3, ovolumeId)
+	if err != nil {
+		log.Printf("***device err:%+v\n", err)
+		resp1, err1 := c.DetachVolumes(instanceId, ovolumeId, deviceName)
+		if err1 != nil {
+			log.Printf("***device err1:%+v\n", err1)
+			return ovolumeId, err1
+		}
+		log.Printf("***detach volume :%+v\n", resp1)
+
+		err1 = c.WaitUntilVolumeAvailables([]string{ovolumeId})
+		if err1 != nil {
+			log.Printf("***device err2:%+v\n", err1)
+			return ovolumeId, err1
+		}
+		log.Printf("volume wait finish:%s\n", ovolumeId)
+
+		return ovolumeId, err
 	}
 
 	log.Printf("attach volume :%s\n", aws.StringValue(resp.VolumeId))
@@ -652,6 +640,7 @@ func VolumeRemove(zone, volumeId, instanceId, deviceName string) error {
 		return err
 	}
 
+	deviceName = fmt.Sprintf("/dev/%s%s", mnhostTypes.DEVICE_NAME_PREFIX, deviceName)
 	resp1, err := c.DetachVolumes(instanceId, volumeId, deviceName)
 	if err != nil {
 		return err
@@ -671,4 +660,46 @@ func VolumeRemove(zone, volumeId, instanceId, deviceName string) error {
 	log.Printf("del volume:%+v\n", resp)
 
 	return nil
+}
+
+func GetDeviceName(privateIp, odeviceName string) (string, error) {
+	start := mnhostTypes.DEVICE_NAME_FROM[0]
+	stop := mnhostTypes.DEVICE_NAME_TO[0]
+	log.Printf("start:%d--%s,stop:%d\n", start, string(start), stop)
+	if len(odeviceName) > 0 {
+		start = odeviceName[0] + 1
+	}
+	log.Printf("start1:%d--%s,stop:%d\n", start, string(start), stop)
+	var tnodes []models.TNode
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_node")
+	nums, err := qs.Filter("privateIp", privateIp).All(&tnodes)
+	if err != nil {
+		return "", err
+	}
+	if nums == 0 {
+		if start > stop {
+			return "", errors.New("volume1 is full")
+		}
+		return fmt.Sprintf("%s", string(start)), nil
+	}
+
+	var i byte
+	for i = start; i <= stop; i++ {
+		tmp := fmt.Sprintf("%s", string(i))
+		//log.Printf("devicename:%s\n", tmp)
+		if deviceExist(tmp, &tnodes) == false {
+			return tmp, nil
+		}
+	}
+	return "", errors.New("volume is full")
+}
+
+func deviceExist(deviceName string, tnodes *[]models.TNode) bool {
+	for _, node := range *tnodes {
+		if node.DeviceName == deviceName {
+			return true
+		}
+	}
+	return false
 }

@@ -59,6 +59,7 @@ type TNode struct {
 	PrivateIp   string    `orm:"size(64)" json:"private_ip"`                    //主机私有IP
 	InstanceId  string    `orm:"size(64)" json:"instance_id"`                   //实例ID
 	VolumeId    string    `orm:"size(64)" json:"volume_id"`                     //EBS卷标Id
+	VolumeState string    `orm:"size(64)" json:"volume_state"`                  //EBS卷标状态
 	DeviceName  string    `orm:"size(64)" json:"device_name"`                   //设备名称
 	State       string    `orm:"size(64)" json:"state"`                         //主节点状态
 	Status      string    `orm:"size(64)" json:"staus"`                         //系统状态 (配置和数据准备)

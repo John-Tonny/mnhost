@@ -130,7 +130,7 @@ const TOPIC_UPDATENODE_SUCCESS = "Vircle.Mnhost.TOPIC.UpdateNode.Success"
 const TOPIC_UPDATENODE_FAIL = "Vircle.Mnhost.TOPIC.UpdateNode.Fail"
 const TOPIC_UPDATENODE_START = "Vircle.Mnhost.TOPIC.UpdateNode.Start"
 
-const SSH_PASSWORD = "vpub$999000"
+const SSH_PASSWORD = "vpub$999$000"
 const RPC_USER = "vpub"
 const RPC_PASSWORD = "vpub999000"
 const PORT_FROM = 10000
@@ -139,7 +139,8 @@ const S_PORT = "9998"
 const S_RPCPROT = "9999"
 const S_WORKDIR = "vircle"
 const DEVICE_NAME_FROM = "f"
-const DEVICE_NAME_TO = "xvdz"
+const DEVICE_NAME_TO = "z"
+const DEVICE_NAME_PREFIX = "xvd"
 
 const TEST_VOLUME_SIZE = 1
 
@@ -148,7 +149,7 @@ const NFS_HOST = "172.31.43.253"
 const NFS_PATH = "/mnt/efs"
 const DOCKER_API_VERSION = "1.40"
 const AWS_ACCOUNT = "test-account"
-const SYSTEM_IMAGE = "ami-05c4f64b6f704720f" // "ami-0815b98db1e19417a" //"ami-0b0426f6bc13cbfe4"
+const SYSTEM_IMAGE = "ami-0987f4b3af1ef6791" //"ami-05c4f64b6f704720f" // "ami-0815b98db1e19417a" //"ami-0b0426f6bc13cbfe4"
 const ZONE_DEFAULT = "us-east-2"
 const INSTANCE_TYPE_DEFAULT = "t2.small" //"t2.micro"
 const VOLUME_SIZE_DEFAULT = 20

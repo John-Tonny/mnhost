@@ -16,15 +16,32 @@ import (
 	"strings"
 
 	uec2 "github.com/John-Tonny/micro/vps/amazon"
-	//"github.com/John-Tonny/mnhost/common"
+	"github.com/John-Tonny/mnhost/common"
 	"github.com/aws/aws-sdk-go/aws"
+
 	//"github.com/aws/aws-sdk-go/service/ec2"
 
 	mnhostTypes "github.com/John-Tonny/mnhost/types"
+	"github.com/docker/docker/api/types"
 )
 
 func main() {
 	log.Println("start ssh")
+
+	mc, _, err := common.DockerNewClient("3.136.202.223", "172.31.38.42")
+	if err != nil {
+		log.Printf("%+v\n", err)
+	}
+	if mc == nil {
+		log.Printf("%+v\n", mc)
+	}
+	defer mc.Close()
+
+	nodes, err := mc.NodeListA(types.NodeListOptions{})
+	if err != nil {
+		log.Printf("%+v\n", err)
+	}
+	log.Printf("%+v\n", nodes)
 
 	fileName := fmt.Sprintf("%s/%s%d/%s", "/mnt/vircle", "dash", 10000, ".dashcore/dash.conf")
 	path1 := path.Dir(fileName)
@@ -45,10 +62,12 @@ func main() {
 	//bbb, _ := strconv.Atoi(device_name_from)
 	aaa := mnhostTypes.DEVICE_NAME_FROM[0]
 	var i byte
-	for i = 3; i < 8; i++ {
+	for i = 0; i < 5; i++ {
 		tmp := fmt.Sprintf("xvd%s", string(aaa+i))
 		//bbb, err := fmt.Printf("ascii:%d\n", device_name_from)
-		VolumeReady("us-east-2c", "snap-0ad4e0a1bde0756b0", "i-083b1853579c7b922", tmp)
+		VolumeReady("us-east-2c", "snap-0ad4e0a1bde0756b0", "i-083b1853579c7b922", tmp, "")
+		//VolumeReady("us-east-2c", "snap-0ad4e0a1bde0756b0", "i-0bd52b6e186750423", tmp, "")
+		//VolumeReady("us-east-2c", "snap-0ad4e0a1bde0756b0", "i-037766032a069aac6", tmp, "")
 		fmt.Println(tmp)
 	}
 
@@ -93,37 +112,42 @@ func main() {
 	log.Println(err)
 }
 
-func VolumeReady(zone, snapshotId, instanceId, deviceName string) error {
+func VolumeReady(zone, snapshotId, instanceId, deviceName, nvolumeId string) error {
+
 	c, err := uec2.NewEc2Client(mnhostTypes.ZONE_DEFAULT, mnhostTypes.AWS_ACCOUNT)
 	if err != nil {
 		return err
 	}
 
-	result, err := c.SnapshotsDescribe(snapshotId)
-	if err != nil {
-		return err
-	}
-	log.Println(result)
+	if nvolumeId == "" {
+		result, err := c.SnapshotsDescribe(snapshotId)
+		if err != nil {
+			return err
+		}
+		log.Println(result)
 
-	volumeId, err := c.CreateVolumes(zone, snapshotId, aws.Int64Value(result.Snapshots[0].VolumeSize))
-	if err != nil {
-		return err
-	}
-	log.Printf("volumeId:%s\n", volumeId)
+		volumeId, err := c.CreateVolumes(zone, snapshotId, aws.Int64Value(result.Snapshots[0].VolumeSize))
+		if err != nil {
+			return err
+		}
+		log.Printf("volumeId:%s\n", volumeId)
 
-	err = c.WaitUntilVolumeAvailables([]string{volumeId})
-	if err != nil {
-		return err
+		err = c.WaitUntilVolumeAvailables([]string{volumeId})
+		if err != nil {
+			return err
+		}
+		log.Printf("create volume wait finish:%s\n", volumeId)
+
+		nvolumeId = volumeId
 	}
-	log.Printf("create volume wait finish:%s\n", volumeId)
 
 	deviceName = fmt.Sprintf("/dev/%s", deviceName)
-	resp, err := c.AttachVolumes(instanceId, volumeId, deviceName)
+	resp, err := c.AttachVolumes(instanceId, nvolumeId, deviceName)
 	if err != nil {
 		return err
 	}
 
-	err = c.WaitUntilVolumeAttach(20, volumeId)
+	err = c.WaitUntilVolumeAttach(5, nvolumeId)
 	if err != nil {
 		return err
 	}
