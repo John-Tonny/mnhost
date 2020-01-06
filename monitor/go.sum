@@ -43,6 +43,9 @@ github.com/GoogleCloudPlatform/cloudsql-proxy v0.0.0-20190605020000-c4ba1fdf4d36
 github.com/John-Tonny/go-jsonrpc v1.0.1 h1:splYo+Weml26FQIYf8JDhR+hLRac3fde7sjyNW7I2DU=
 github.com/John-Tonny/go-jsonrpc v1.0.1/go.mod h1:oDGZ74iBrS7dUuMdE886BQtEUIDTjgrpMsXAUDaaKaA=
 github.com/John-Tonny/mnhost v0.0.0-20191128093822-f81a1f9dd5df h1:vG05cbrfMXf5AL9bXo0y4C52PF1wa2XCkdWnukKbmWo=
+github.com/John-Tonny/mnhost v0.0.0-20191231073638-f4380469eb80 h1:4kYPTNDri59JjHOXykJfZIpy02PGnharB4s8TrUax1s=
+github.com/John-Tonny/mnhost/interface/out/vps v0.0.0-20191231073638-f4380469eb80 h1:HAcdZ/fVqYgjyal14RArLd7gIjTjuf4CKtwX/l3X6U0=
+github.com/John-Tonny/mnhost/interface/out/vps v0.0.0-20191231073638-f4380469eb80/go.mod h1:2fQWhS2zIWgn/SqTvNF6CJNWSOcSCEAMvfaMSSItTNE=
 github.com/Knetic/govaluate v3.0.0+incompatible/go.mod h1:r7JcOSlj0wfOMncg0iLm8Leh48TZaKVeNIfJntJ2wa0=
 github.com/Microsoft/go-winio v0.4.14/go.mod h1:qXqCSQ3Xa7+6tgxaGTIe4Kpcdsi+P8jBhyzoq1bpyYA=
 github.com/Microsoft/go-winio v0.4.15-0.20190919025122-fc70bd9a86b5/go.mod h1:tTuCMEN+UleMWgg9dVx4Hu52b1bJo+59jBh3ajtinzw=

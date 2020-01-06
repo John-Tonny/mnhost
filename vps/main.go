@@ -26,7 +26,7 @@ func main() {
 		}
 	}*/
 
-	handler.Init("cluster1")
+	//handler.Init("cluster1")
 
 	srv := common.GetMicroServer(serviceName)
 

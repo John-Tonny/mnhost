@@ -77,3 +77,5 @@ RegistryAddrs:
     - 127.0.0.1:8500
   monitor:
     - 127.0.0.1:8500
+MyConst:
+  publicIpEnabled: 1

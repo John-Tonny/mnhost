@@ -20,6 +20,7 @@ type Conf struct {
 	RegistryAddrs map[string][]string `yaml:"RegistryAddrs"`
 	TracingAddr   map[string]string   `yaml:"TracingAddr"`
 	TopicNode     map[string]string   `yaml:"TopicNode"`
+	MyConst       map[string]string   `yaml:"MyConst"`
 }
 
 type db struct {
@@ -70,6 +71,10 @@ func GetRegistryAddrs(service string) []string {
 		service = "default"
 	}
 	return config.RegistryAddrs[service]
+}
+
+func GetMyConst(name string) string {
+	return config.MyConst[name]
 }
 
 func init() {

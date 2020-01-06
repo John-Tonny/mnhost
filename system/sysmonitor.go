@@ -18,6 +18,7 @@ import (
 	"github.com/astaxie/beego"
 
 	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/mem"
 
 	"github.com/go-ini/ini"
@@ -29,6 +30,13 @@ type SysInfo struct {
 	CodeMsg    string
 	CpuPercert float32
 	MemPercert float32
+}
+
+type DiskInfo struct {
+	Code    string
+	CodeMsg string
+	Total   int64
+	Free    int64
 }
 
 type NameInfo struct {
@@ -72,6 +80,10 @@ type SysController struct {
 	beego.Controller
 }
 
+type DiskController struct {
+	beego.Controller
+}
+
 type ConfController struct {
 	beego.Controller
 }
@@ -100,14 +112,6 @@ type UmountEbsController struct {
 	beego.Controller
 }
 
-type NewFileController struct {
-	beego.Controller
-}
-
-type DelFileController struct {
-	beego.Controller
-}
-
 const (
 	MOUNT_PATH   = "/mnt/vircle"
 	NFS_PATH     = "/mnt/efs"
@@ -125,6 +129,39 @@ func (this *SysController) Get() {
 		"成功",
 		float32(cc[0]),
 		float32(v.UsedPercent)}
+	this.Data["json"] = data
+	this.ServeJSON()
+}
+
+func (this *DiskController) Post() {
+	params := NameInfo{}
+	body := this.Ctx.Input.RequestBody
+	err := json.Unmarshal(body, &params)
+	data := &DiskInfo{}
+	if err != nil {
+		data = &DiskInfo{
+			"400",
+			"参数错误",
+			-1,
+			-1}
+	} else {
+		fmt.Printf("params:%+v\n", params)
+		pdir := fmt.Sprintf("%s/%s", MOUNT_PATH, params.Name)
+		info, err := disk.Usage(pdir)
+		if err != nil {
+			data = &DiskInfo{
+				"400",
+				"参数错误",
+				-1,
+				-1}
+		} else {
+			data = &DiskInfo{
+				"200",
+				"成功",
+				int64(info.Total),
+				int64(info.Free)}
+		}
+	}
 	this.Data["json"] = data
 	this.ServeJSON()
 }
@@ -334,63 +371,6 @@ func (this *UmountEbsController) Post() {
 	this.ServeJSON()
 }
 
-func (this *NewFileController) Get() {
-	params := NodeNameInfo{}
-	body := this.Ctx.Input.RequestBody
-	err := json.Unmarshal(body, &params)
-	data := &RespInfo{}
-	if err != nil {
-		data = &RespInfo{
-			"400",
-			"参数错误"}
-	} else {
-		fmt.Printf("params:%+v\n", params)
-		if params.CoinName == "" || params.RpcPort == 0 {
-			data = &RespInfo{
-				"400",
-				"参数错误"}
-		} else {
-			err := newFile(params.CoinName, params.RpcPort)
-			if err != nil {
-				data = &RespInfo{
-					"401",
-					"命令执行错误"}
-			} else {
-				data = &RespInfo{
-					"200",
-					"成功"}
-			}
-		}
-	}
-	this.Data["json"] = data
-	this.ServeJSON()
-}
-
-func (this *DelFileController) Get() {
-	params := NodeNameInfo{}
-	body := this.Ctx.Input.RequestBody
-	err := json.Unmarshal(body, &params)
-	data := &RespInfo{}
-	if err != nil {
-		data = &RespInfo{
-			"400",
-			"参数错误"}
-	} else {
-		fmt.Printf("params:%+v\n", params)
-		if params.CoinName == "" || params.RpcPort == 0 {
-			data = &RespInfo{
-				"400",
-				"参数错误"}
-		} else {
-			data = &RespInfo{
-				"200",
-				"成功"}
-		}
-	}
-	this.Data["json"] = data
-	this.ServeJSON()
-}
-
 func writeConf(conf Conf) {
 	//fileName := fmt.Sprintf("%s/%s/%s%d/%s", NFS_PATH, conf.CoinName, NODE_PREFIX, conf.RpcPort, conf.FileName)
 	fileName := fmt.Sprintf("%s/%s%d/%s", MOUNT_PATH, conf.CoinName, conf.RpcPort, conf.FileName)
@@ -594,29 +574,35 @@ func UmountEbs(nodeName string) error {
 
 	os.RemoveAll(path)
 
-	fmt.Printf("umount %s\n", path)
-	return nil
-}
-
-func newFile(coinName string, rpcProt int) error {
-	cmd := exec.Command("mkdir", NFS_PATH)
-	cmd.CombinedOutput()
-	/*if err != nil {
-		return err
-	}*/
-
-	cmd = exec.Command("mount", "-t", "nfs4", "-o", "nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2", NFS_HOST, NFS_PATH)
-	_, err := cmd.CombinedOutput()
+	cmd = exec.Command("df", "-h")
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return err
+		return errors.New("exec cmd error")
 	}
 
+	cmd.Start()
+	reader := bufio.NewReader(stdout)
+	//实时循环读取输出流中的一行内容
+	fmt.Printf("%s\n", path)
+	for {
+		line, err2 := reader.ReadString('\n')
+		if err2 != nil || io.EOF == err2 {
+			break
+		}
+		fmt.Printf("%s\n", line)
+		if strings.Contains(line, path) {
+			return errors.New("fail umount error")
+		}
+	}
+
+	fmt.Printf("umount %s\n", path)
 	return nil
 }
 
 func main() {
 	beego.BConfig.CopyRequestBody = true
 	beego.Router("/GetSysStatus", &SysController{})
+	beego.Router("/GetDiskInfo", &DiskController{})
 	beego.Router("/WriteConf", &ConfController{})
 	beego.Router("/Restart", &RestartController{})
 	beego.Router("/FindNode", &FindNodeController{})
@@ -624,7 +610,5 @@ func main() {
 	beego.Router("/MountEbs", &MountEbsController{})
 	beego.Router("/ModifyEbs", &ModifyEbsController{})
 	beego.Router("/UmountEbs", &UmountEbsController{})
-	beego.Router("/NewFile", &NewFileController{})
-	beego.Router("/DelFile", &DelFileController{})
 	beego.Run(":8844")
 }

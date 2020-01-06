@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	//"path/filepath"
-	"sort"
+	//"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -376,7 +376,7 @@ func (e *Vps) GetAllNodeFromUser(ctx context.Context, req *vps.Request, rsp *vps
 func (e *Vps) processCreateVps(clusterName, role string, volumeSize int64) error {
 	log.Printf("process create Vps from cluster:%s, role:%s, size:%d\n", clusterName, role, volumeSize)
 
-	bAllocation := true
+	bAllocation := false
 	bVolume := false
 	var vpsInfo *mnhostTypes.VpsInfo
 	vpsInfo, errcode, err := NewVps(mnhostTypes.SYSTEM_IMAGE, mnhostTypes.ZONE_DEFAULT, mnhostTypes.INSTANCE_TYPE_DEFAULT, clusterName, role, volumeSize, bAllocation, bVolume)
@@ -384,11 +384,12 @@ func (e *Vps) processCreateVps(clusterName, role string, volumeSize int64) error
 		e.pubErrMsg("", "newvps", errcode, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
 		return nil
 	}
-	err = common.EfsMount(vpsInfo.PublicIp, vpsInfo.PrivateIp, mnhostTypes.SSH_PASSWORD)
+
+	/*err = common.EfsMount(vpsInfo.PublicIp, vpsInfo.PrivateIp, mnhostTypes.SSH_PASSWORD)
 	if err != nil {
 		e.pubErrMsg("", "newvps", utils.EFS_MOUNT_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
 		return nil
-	}
+	}*/
 
 	if (role == mnhostTypes.ROLE_MANAGER) || (role == mnhostTypes.ROLE_WORKER) {
 		publicIp, privateIp, err := common.GetVpsIp("cluster1")
@@ -433,7 +434,7 @@ func (e *Vps) processCreateVps(clusterName, role string, volumeSize int64) error
 			qs := o.QueryTable("t_vps")
 			err = qs.Filter("instanceId", vpsInfo.InstanceId).One(&tvps)
 			if err != nil {
-				e.pubErrMsg("", "delvps", utils.RECODE_DATAERR, err.Error(), mnhostTypes.TOPIC_DELVPS_FAIL)
+				e.pubErrMsg("", "newvps", utils.RECODE_DATAERR, err.Error(), mnhostTypes.TOPIC_DELVPS_FAIL)
 				return nil
 			}
 
@@ -806,10 +807,10 @@ func DelVps(userId, instanceId string) (string, error) {
 }
 
 func NewNode(orderId int64, clusterName string) (string, error) {
-	defer func() {
-		log.Printf("unlock %s\n", "***")
+	/*defer func() {
+		log.Printf("unlock %s\n", orderId)
 		mutex.Unlock()
-	}()
+	}()*/
 
 	log.Printf("start new node from orderid %d\n", orderId)
 	var torder models.TOrder
@@ -828,7 +829,7 @@ func NewNode(orderId int64, clusterName string) (string, error) {
 		return utils.RECODE_NODATA, err
 	}
 
-	mutex.Lock()
+	/*mutex.Lock()
 	publicIp, privateIp, instanceId, _, err := AllocateVps()
 	if err != nil {
 		return utils.SERVICE_NEW_ERR, err
@@ -838,7 +839,7 @@ func NewNode(orderId int64, clusterName string) (string, error) {
 	log.Printf("lock %d\n", rpcport)
 	if err != nil {
 		return utils.PORT_ERR, err
-	}
+	}*/
 
 	/*deviceName, err := common.GetDeviceName(privateIp, "")
 	if err != nil {
@@ -848,13 +849,13 @@ func NewNode(orderId int64, clusterName string) (string, error) {
 	var tnode models.TNode
 	tnode.ClusterName = clusterName
 	tnode.CoinName = torder.Coinname
-	tnode.RpcPort = rpcport
-	tnode.Port = port
+	//tnode.RpcPort = rpcport
+	//tnode.Port = port
 	tnode.Userid = torder.Userid
 	tnode.Order = &torder
-	tnode.PublicIp = publicIp
-	tnode.PrivateIp = privateIp
-	tnode.InstanceId = instanceId
+	//tnode.PublicIp = publicIp
+	//tnode.PrivateIp = privateIp
+	//tnode.InstanceId = instanceId
 	//tnode.DeviceName = deviceName
 	tnode.Status = "wait-data"
 	o = orm.NewOrm()
@@ -1023,38 +1024,6 @@ func WriteConf(confName, externIp, mnKey string) error {
 	cfg.SaveTo(confName)
 
 	return nil
-}
-
-func getRpcPort() (int, int, error) {
-	rpcport := mnhostTypes.PORT_FROM
-	port := rpcport + 1
-
-	var tnodes []models.TNode
-	o := orm.NewOrm()
-	qs := o.QueryTable("t_node")
-	nums, err := qs.All(&tnodes)
-	if err != nil {
-		return 0, 0, err
-	}
-	if nums == 0 {
-		return rpcport, port, nil
-	}
-
-	for i := mnhostTypes.PORT_FROM; i < mnhostTypes.PORT_TO; i = i + 2 {
-		if portExist(i, &tnodes) == false {
-			return i, i + 1, nil
-		}
-	}
-	return 0, 0, errors.New("port is full")
-}
-
-func portExist(port int, tnodes *[]models.TNode) bool {
-	for _, node := range *tnodes {
-		if node.RpcPort == port {
-			return true
-		}
-	}
-	return false
 }
 
 func sshCmd(client *gossh.Client, cmd string, fails int) (*gossh.Result, error) {
@@ -1312,7 +1281,7 @@ func Init(clusterName string) error {
 func InitNewVps(clusterName string) error {
 	role := mnhostTypes.ROLE_MANAGER
 	volumeSize := int64(0)
-	bAllocation := true
+	bAllocation := false
 	bVolume := false
 
 	mpublicIp := ""
@@ -1491,45 +1460,3 @@ func InitNewVps(clusterName string) error {
 
 }
 */
-
-func AllocateVps() (string, string, string, string, error) {
-	var tvpss []models.TVps
-	o := orm.NewOrm()
-	qs := o.QueryTable("t_vps")
-	nums, err := qs.All(&tvpss)
-	if err != nil {
-		return "", "", "", "", err
-	}
-
-	if nums == 0 {
-		return "", "", "", "", errors.New("no vps")
-	}
-
-	type NodeInfo struct {
-		PrivateIp string
-		Nums      int
-	}
-
-	var nodes []NodeInfo
-	for _, tvps := range tvpss {
-		var tnodes []models.TNode
-		o = orm.NewOrm()
-		qs = o.QueryTable("t_node")
-		nodenums, err := qs.Filter("privateIp", tvps.PrivateIp).All(&tnodes)
-		if err != nil {
-			return "", "", "", "", err
-		}
-		nodes = append(nodes, NodeInfo{tvps.PrivateIp, int(nodenums)})
-	}
-
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].Nums < nodes[j].Nums // 升序
-		//return nodes[i].Nums > nodes[j].Nums // 降序
-	})
-	publicIp, instanceId, regionName, err := common.GetPublicIpFromVps(nodes[0].PrivateIp)
-	if err != nil {
-		return "", nodes[0].PrivateIp, "", "", err
-	}
-
-	return publicIp, nodes[0].PrivateIp, instanceId, regionName, nil
-}

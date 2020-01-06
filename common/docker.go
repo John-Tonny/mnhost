@@ -17,8 +17,10 @@ import (
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 
+	"github.com/John-Tonny/mnhost/conf"
 	"github.com/John-Tonny/mnhost/model"
 	mnhostTypes "github.com/John-Tonny/mnhost/types"
+
 	"github.com/astaxie/beego/orm"
 )
 
@@ -31,9 +33,10 @@ const nfs_path = "/mnt/efs"
 const NODE_PREFIX = "node"*/
 
 func DockerNewClient(publicIp, privateIp string) (*DockerClient, string, error) {
-	ipAddress := publicIp
-	if mnhostTypes.PUBLIC_IP_ENABLED == 0 {
-		ipAddress = privateIp
+	ipAddress := privateIp
+	if config.GetMyConst("publicIpEnabled") == "1" {
+		//if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
+		ipAddress = publicIp
 	}
 
 	dockerHost := fmt.Sprintf("tcp://%s:2375", ipAddress)

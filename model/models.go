@@ -60,6 +60,8 @@ type TNode struct {
 	InstanceId  string    `orm:"size(64)" json:"instance_id"`                   //实例ID
 	VolumeId    string    `orm:"size(64)" json:"volume_id"`                     //EBS卷标Id
 	VolumeState string    `orm:"size(64)" json:"volume_state"`                  //EBS卷标状态
+	VolumeTotal int64     `json:"volume_total"`                                 //EBS卷总空间
+	VolumeFree  int64     `json:"volume_free"`                                  //EBS卷剩余空间
 	DeviceName  string    `orm:"size(64)" json:"device_name"`                   //设备名称
 	State       string    `orm:"size(64)" json:"state"`                         //主节点状态
 	Status      string    `orm:"size(64)" json:"staus"`                         //系统状态 (配置和数据准备)
@@ -127,7 +129,7 @@ func init() {
 	port := strconv.Itoa(int(config.GetDB("user").Port))
 	user := config.GetDB("user").User
 	pw := config.GetDB("user").PW
-	dburl := user + ":" + pw + "@tcp(" + host + ":" + port + ")/" + dbname + "?charset=utf8"
+	dburl := user + ":" + pw + "@tcp(" + host + ":" + port + ")/" + dbname + "?charset=utf8&loc=Local"
 	orm.RegisterDataBase("default", "mysql", dburl, 30)
 
 	//注册model 建表

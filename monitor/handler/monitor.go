@@ -29,18 +29,20 @@ import (
 	mnhostTypes "github.com/John-Tonny/mnhost/types"
 	"github.com/John-Tonny/mnhost/utils"
 
-	//uec2 "github.com/John-Tonny/micro/vps/amazon"
-	//"github.com/aws/aws-sdk-go/aws"
+	uec2 "github.com/John-Tonny/micro/vps/amazon"
+	"github.com/aws/aws-sdk-go/aws"
+
 	//"github.com/aws/aws-sdk-go/service/ec2"
 
 	logPB "github.com/John-Tonny/mnhost/interface/out/log"
 	mnPB "github.com/John-Tonny/mnhost/interface/out/mnmsg"
 	monitor "github.com/John-Tonny/mnhost/interface/out/monitor"
+	pb "github.com/John-Tonny/mnhost/interface/out/vps"
 
 	"github.com/John-Tonny/go-virclerpc"
 
 	"github.com/docker/docker/api/types"
-	//"github.com/docker/docker/api/types/swarm"
+	"github.com/docker/docker/api/types/swarm"
 	//"github.com/docker/docker/api/types/filters"
 )
 
@@ -54,6 +56,8 @@ var (
 	topic       string
 	serviceName string
 	version     string
+
+	newVpsFlag bool
 
 	leaderRetrys int
 
@@ -208,6 +212,23 @@ func (e *Monitor) UpdateService(ctx context.Context, req *monitor.UpdateRequest,
 	rsp.Errno = utils.RECODE_OK
 	rsp.Errmsg = utils.RecodeText(rsp.Errno)
 
+	var tcoin models.TCoin
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_coin")
+	err := qs.Filter("Name", req.CoinName).One(&tcoin)
+	if err != nil {
+		rsp.Errno = utils.RECODE_NODATA
+		rsp.Errmsg = utils.RecodeText(rsp.Errno)
+		return nil
+	}
+	tcoin.Docker = req.DockerName
+	_, err = o.Update(&tcoin)
+	if err != nil {
+		rsp.Errno = utils.RECODE_UPDATEERR
+		rsp.Errmsg = utils.RecodeText(rsp.Errno)
+		return nil
+	}
+
 	go ProcessUpdateService(req.CoinName, req.DockerName)
 
 	log.Println("update service request success")
@@ -224,10 +245,12 @@ func MonitorVps() {
 		nums, err := qs.Filter("clusterName", "cluster1").All(&tvpss)
 		if err != nil {
 			DelayTime(startTime, 20, "monitor vps time")
+			continue
 		}
 
 		if nums == 0 {
 			DelayTime(startTime, 20, "monitor vps time")
+			continue
 		}
 
 		var managerInfo mnhostTypes.ResourceInfo
@@ -258,17 +281,22 @@ func MonitorVps() {
 			}
 		}
 
-		if managers > 0 {
-			log.Printf("manager:%d-%f-%f", managers, managerInfo.CpuPercert/float32(managers), managerInfo.MemPercert/float32(managers))
-		} else {
-			log.Printf("manager:%d-%f-%f", managers, managerInfo.CpuPercert, managerInfo.MemPercert)
-		}
-		log.Printf("worker:%d-%f-%f", workers, workerInfo.CpuPercert, workerInfo.MemPercert)
-
 		close(inputQ)
 
-		if managerInfo.CpuPercert <= 20 || managerInfo.MemPercert <= 20 {
-
+		totals := managers + workers
+		cpuPercert := (managerInfo.CpuPercert + workerInfo.CpuPercert) / float32(totals)
+		memPercert := (managerInfo.MemPercert + workerInfo.MemPercert) / float32(totals)
+		if totals > 0 {
+			log.Printf("sysstatus:%d-%d-%f-%f", managers, workers, cpuPercert, memPercert)
+		}
+		if cpuPercert >= 80.0 || memPercert >= 80.0 {
+			if !newVpsFlag {
+				role := mnhostTypes.ROLE_MANAGER
+				if workers >= managers*40 {
+					role = mnhostTypes.ROLE_WORKER
+				}
+				VpsNew(role)
+			}
 		}
 
 		DelayTime(startTime, 20, "monitor vps time")
@@ -285,30 +313,37 @@ func MonitorNode() error {
 		nums, err := qs.Filter("clusterName", "cluster1").All(&tvpss)
 		if err != nil {
 			DelayTime(startTime, 20, "monitor node time")
+			continue
 		}
 
 		if nums == 0 {
 			DelayTime(startTime, 20, "monitor node time")
+			continue
 		}
 
 		mpublicIp, mprivateIp, err := common.GetVpsIp("cluster1")
 		if err != nil {
+			SwarmReInit("cluster1")
 			DelayTime(startTime, 20, "monitor node time")
+			continue
 		}
 
 		mc, _, err := common.DockerNewClient(mpublicIp, mprivateIp)
 		if err != nil {
 			DelayTime(startTime, 20, "monitor node time")
+			continue
 		}
 		if mc == nil {
 			DelayTime(startTime, 20, "monitor node time")
+			continue
 		}
-		defer mc.Close()
 
 		nodes, err := mc.NodeListA(types.NodeListOptions{})
 		if err != nil {
 			log.Printf("%+v\n", err)
+			SwarmReInit("cluster1")
 			DelayTime(startTime, 20, "monitor node time")
+			continue
 		}
 
 		leaderPrivateIp := ""
@@ -316,6 +351,7 @@ func MonitorNode() error {
 			Node: make(map[string]*mnhostTypes.NodeInfo),
 		}
 		for _, node := range nodes {
+			//log.Printf("nodes:%+v\n", node)
 			if node.Spec.Role == "manager" {
 				if node.ManagerStatus != nil && node.ManagerStatus.Leader == true {
 					leaderPrivateIp = strings.Split(node.ManagerStatus.Addr, ":")[0]
@@ -364,6 +400,20 @@ func MonitorNode() error {
 			}
 		}
 
+		for _, tvps := range tvpss {
+			if !vpsExist(tvps.PrivateIp, nodes) {
+				_, ok := allnodes.Node[tvps.PrivateIp]
+				if !ok {
+					allnodes.Node[tvps.PrivateIp] = &mnhostTypes.NodeInfo{}
+				}
+				allnodes.Node[tvps.PrivateIp].PrivateIp = tvps.PrivateIp
+				allnodes.Node[tvps.PrivateIp].PublicIp = tvps.PublicIp
+				allnodes.Node[tvps.PrivateIp].Role = tvps.VpsRole
+				allnodes.Node[tvps.PrivateIp].Status = false
+				//log.Printf("%+v\n", allnodes.Node[tvps.PrivateIp])
+			}
+		}
+
 		if len(allnodes.Node) > 0 {
 			var wg sync.WaitGroup
 			wg.Add(len(allnodes.Node))
@@ -387,23 +437,28 @@ func MonitorService() {
 		nums, err := qs.Filter("clusterName", "cluster1").All(&tnodes)
 		if err != nil {
 			DelayTime(startTime, 20, "monitor service time")
+			continue
 		}
 
 		if nums == 0 {
 			DelayTime(startTime, 20, "monitor service time")
+			continue
 		}
 
 		mpublicIp, mprivateIp, err := common.GetVpsIp("cluster1")
 		if err != nil {
 			DelayTime(startTime, 20, "monitor service time")
+			continue
 		}
 
 		mc, _, err := common.DockerNewClient(mpublicIp, mprivateIp)
 		if err != nil {
 			DelayTime(startTime, 20, "monitor service time")
+			continue
 		}
 		if mc == nil {
 			DelayTime(startTime, 20, "monitor service time")
+			continue
 		}
 		defer mc.Close()
 
@@ -411,9 +466,19 @@ func MonitorService() {
 		wg.Add(int(nums))
 		for _, tnode := range tnodes {
 			if tnode.Status == "wait-data" {
-				common.NodeReadyData(mpublicIp, mprivateIp, tnode.CoinName, tnode.RpcPort, &wg)
-			} else {
+				if !newVpsFlag {
+					common.NodeReadyData(mpublicIp, mprivateIp, tnode.CoinName, tnode.RpcPort, &wg)
+				} else {
+					wg.Done()
+					log.Printf("newvps***service:%+v\n", tnode)
+				}
+			} else if tnode.Status == "wait-conf" {
+				common.NodeReadyConfig(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.RpcPort, &wg)
+			} else if tnode.Status == "finish" {
 				ProcessService(tnode.ClusterName, tnode.CoinName, tnode.Status, tnode.PrivateIp, mpublicIp, mprivateIp, tnode.RpcPort, mc, &wg)
+			} else {
+				wg.Done()
+				log.Printf("***service:%+v\n", tnode)
 			}
 		}
 		wg.Wait()
@@ -432,10 +497,12 @@ func MonitorApp() {
 		nums, err := qs.Filter("clusterName", "cluster1").All(&tnodes)
 		if err != nil {
 			DelayTime(startTime, 20, "monitor app time")
+			continue
 		}
 
 		if nums == 0 {
 			DelayTime(startTime, 20, "monitor app time")
+			continue
 		}
 
 		/*mpublicIp, mprivateIp, err := common.GetVpsIp("cluster1")
@@ -451,10 +518,10 @@ func MonitorApp() {
 			aaa++
 			//if tnode.PublicIp == "" || tnode.PrivateIp == "" {
 			//	common.GetNodeIp(mpublicIp, mprivateIp, tnode.CoinName, tnode.Port, &wg)
-			if tnode.Status == "wait-conf" {
-				common.NodeReadyConfig(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.RpcPort, &wg)
-				log.Printf("***bbb:%d---%+v\n", aaa, tnode)
-			} else if tnode.Status == "finish" {
+			//if tnode.Status == "wait-conf" {
+			//	common.NodeReadyConfig(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.RpcPort, &wg)
+			//	log.Printf("***bbb:%d---%+v\n", aaa, tnode)
+			if tnode.Status == "finish" {
 				GetMasterNodeStatus(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.RpcPort, &wg)
 				log.Printf("***ccc:%d---%+v\n", aaa, tnode)
 			} else {
@@ -468,12 +535,105 @@ func MonitorApp() {
 	}
 }
 
+func MonitorVolume() {
+	defaultTime := int64(30)
+	minSize := int64(1024 * 1024 * 1024)
+	for {
+		startTime := time.Now().Unix()
+
+		var tnodes []models.TNode
+		o := orm.NewOrm()
+		qs := o.QueryTable("t_node")
+		nums, err := qs.All(&tnodes)
+		if err != nil {
+			DelayTime(startTime, defaultTime, "monitor volume time")
+			continue
+		}
+
+		if nums == 0 {
+			DelayTime(startTime, defaultTime, "monitor volume time")
+			continue
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(int(nums))
+		for _, tnode := range tnodes {
+			common.GetDiskInfo(tnode, &wg)
+		}
+		wg.Wait()
+
+		o = orm.NewOrm()
+		qs = o.QueryTable("t_node")
+		num1s, err := qs.Filter("volumeFree__lt", minSize).All(&tnodes)
+		if err != nil {
+			DelayTime(startTime, defaultTime, "monitor volume time")
+			continue
+		}
+
+		if num1s == 0 {
+			DelayTime(startTime, defaultTime, "monitor volume time")
+			continue
+		}
+
+		c, err := uec2.NewEc2Client(mnhostTypes.ZONE_DEFAULT, mnhostTypes.AWS_ACCOUNT)
+		if err != nil {
+			DelayTime(startTime, defaultTime, "monitor volume time")
+			continue
+		}
+
+		if c == nil {
+			DelayTime(startTime, defaultTime, "monitor volume time")
+			continue
+		}
+
+		wg.Add(int(num1s))
+		for _, tnode := range tnodes {
+			log.Printf("disk node:%+v\n", tnode)
+			size := minSize/1024/1024/1024 + int64((tnode.VolumeTotal+512*1024*1024)/1024/1024/1024)
+			common.EbsModify(tnode, size, c, &wg)
+		}
+		wg.Wait()
+
+		DelayTime(startTime, defaultTime, "monitor volume time")
+	}
+}
+
+func MonitorSnapshot() {
+	defaultTime := int64(30)
+	for {
+		startTime := time.Now().Unix()
+
+		var tcoins []models.TCoin
+		o := orm.NewOrm()
+		qs := o.QueryTable("t_coin")
+		nums, err := qs.Filter("status", "Enabled").All(&tcoins)
+		if err != nil {
+			DelayTime(startTime, defaultTime, "monitor snapshot time")
+			continue
+		}
+
+		if nums == 0 {
+			DelayTime(startTime, defaultTime, "monitor snapshot time")
+			continue
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(int(nums))
+		for _, tcoin := range tcoins {
+			ProcessSnapshot(tcoin, &wg)
+		}
+		wg.Wait()
+
+		DelayTime(startTime, defaultTime, "monitor snapshot time")
+	}
+}
+
 func ProcessNode(nodeInfo *mnhostTypes.NodeInfo, managerPublicIp, managerPrivateIp string, mc *common.DockerClient, wg *sync.WaitGroup) error {
 	defer func() {
 		wg.Done()
 		err := recover()
 		if err != nil {
-			log.Printf("get node ip error:%+v\n", err)
+			log.Printf("process node error:%+v\n", err)
 		}
 	}()
 
@@ -486,10 +646,11 @@ func ProcessNode(nodeInfo *mnhostTypes.NodeInfo, managerPublicIp, managerPrivate
 		if err != nil {
 			panic(err)
 		} else {
-			err = SwarmReJoin(managerToken, workerToken, nodeInfo.PublicIp, nodeInfo.PrivateIp, managerPrivateIp, nodeInfo.Role, true)
+			err = SwarmReJoin(managerToken, workerToken, nodeInfo.PublicIp, nodeInfo.PrivateIp, managerPrivateIp, nodeInfo.Role, false)
 			if err != nil {
-				log.Printf("success node repaire %s-%s-%s-%s-%s", nodeInfo.PublicIp, nodeInfo.PrivateIp, managerPublicIp, managerPrivateIp, nodeInfo.Role)
+				log.Printf("get node ip error2:%+v\n", err)
 			}
+			log.Printf("success node repaire %s-%s-%s-%s-%s", nodeInfo.PublicIp, nodeInfo.PrivateIp, managerPublicIp, managerPrivateIp, nodeInfo.Role)
 		}
 	}
 	return nil
@@ -567,24 +728,92 @@ func ProcessApp() error {
 	return nil
 }
 
+func ProcessSnapshot(tcoin models.TCoin, wg *sync.WaitGroup) error {
+	defaultTime := int64(240)
+	defer func() {
+		wg.Done()
+		err := recover()
+		if err != nil {
+			log.Printf("process snapshot error:%+v\n", err)
+		}
+	}()
+	log.Printf("process snapshot start:%s\n", tcoin.Name)
+
+	var tnodes []models.TNode
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_node")
+	nums, err := qs.Filter("coinName", tcoin.Name).All(&tnodes)
+	if err != nil {
+		panic(err)
+	}
+
+	if nums == 0 {
+		panic(errors.New("node no found"))
+	}
+
+	last := tcoin.Updatetime.UTC().Unix()
+	now := time.Now().UTC().Unix()
+
+	if (now - last) <= defaultTime {
+		return nil
+	}
+
+	c, err := uec2.NewEc2Client(mnhostTypes.ZONE_DEFAULT, mnhostTypes.AWS_ACCOUNT)
+	if err != nil {
+		panic(err)
+	}
+
+	if c == nil {
+		panic(err)
+	}
+
+	snapshotId := ""
+	for _, tnode := range tnodes {
+		result, err := c.SnapshotCreate(tnode.VolumeId)
+		if err == nil {
+			snapshotId = aws.StringValue(result.SnapshotId)
+
+			c.SnapshotDelete(tcoin.SnapshotId)
+
+			o = orm.NewOrm()
+			tcoin.SnapshotId = snapshotId
+			o.Update(&tcoin)
+
+			log.Printf("process snapshot success:%s-%s\n", tcoin.Name, snapshotId)
+			return nil
+		}
+	}
+
+	return errors.New("volumeid novalid")
+}
+
 func ProcessUpdateService(coinName, dockerId string) error {
-	log.Println("start update service")
+	defer func() {
+		err := recover()
+		if err != nil {
+			log.Printf("process update service error:%s-%+v\n", coinName, err)
+		} else {
+			log.Printf("success process update service:%s-%s\n", coinName, dockerId)
+		}
+	}()
+
+	log.Println("start process update service")
 	var tnodes []models.TNode
 	o := orm.NewOrm()
 	qs := o.QueryTable("t_node")
 	nums, err := qs.Filter("clusterName", "cluster1").Filter("coinName", coinName).All(&tnodes)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	if nums == 0 {
-		return errors.New("no node")
+		panic(errors.New("no node"))
 	}
 
 	for _, tnode := range tnodes {
 		go ServiceUpdate(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, dockerId, tnode.RpcPort)
 	}
-	log.Println("finish monitor app")
+
 	return nil
 }
 
@@ -610,7 +839,8 @@ func GetMasterNodeStatus(publicIp, privateIp, coinName string, rpcPort int, wg *
 	}()
 	log.Printf("***getStatus:%s-%s%d\n", publicIp, coinName, rpcPort)
 	ipAddress := privateIp
-	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
+	if config.GetMyConst("publicIpEnabled") == "1" {
+		//if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
 		ipAddress = publicIp
 	}
 
@@ -656,43 +886,12 @@ func GetMasterNodeStatus(publicIp, privateIp, coinName string, rpcPort int, wg *
 }
 
 func Init() {
-	//c := cron.New()
-	//spec := "*/20 * * * * ?"
-	/*c.AddFunc(spec, func() {
-		err := MonitorNode()
-		if err != nil {
-			log.Printf("node err:%+v\n", err)
-		}
-	})*/
-	//spec1 := "*/20 * * * * ?"
-	/*c.AddFunc(spec1, func() {
-		err := MonitorService()
-		if err != nil {
-			log.Printf("service err:%+v\n", err)
-		}
-	})*/
-
-	//spec2 := "*/20 * * * * ?"
-	/*c.AddFunc(spec2, func() {
-		err := MonitorApp()
-		if err != nil {
-			log.Printf("app err:%+v\n", err)
-		}
-	})*/
-	///spec3 := "*/20 * * * * ?"
-	/*c.AddFunc(spec3, func() {
-		err := MonitorVps()
-		if err != nil {
-			log.Printf("node err:%+v\n", err)
-		}
-	})*/
-	//c.Start()
-
 	go MonitorVps()
 	go MonitorNode()
 	go MonitorService()
 	go MonitorApp()
-
+	go MonitorVolume()
+	go MonitorSnapshot()
 }
 
 func SwarmReInit(clusterName string) error {
@@ -702,7 +901,15 @@ func SwarmReInit(clusterName string) error {
 	qs := o.QueryTable("t_vps")
 	err := qs.Filter("clusterName", clusterName).Filter("status", "leader").One(&tvps)
 	if err != nil {
-		return err
+		err = qs.Filter("clusterName", clusterName).One(&tvps)
+		if err != nil {
+			return err
+		}
+		tvps.Status = "leader"
+		_, err = o.Update(&tvps)
+		if err != nil {
+			return err
+		}
 	}
 
 	mc, _, err := common.DockerNewClient(tvps.PublicIp, tvps.PrivateIp)
@@ -837,3 +1044,71 @@ func DelayTime(startTime, defaultTime int64, name string) {
 
 //Error: Cannot obtain a lock on data directory
 //Please restart with -reindex
+
+func VpsNewSuccess(pub broker.Event) error {
+	newVpsFlag = false
+	log.Println("#############new nodesuccess start")
+	var msg *mnPB.MnMsg
+	if err := json.Unmarshal(pub.Message().Body, &msg); err != nil {
+		return err
+	}
+	userId := pub.Message().Header["user_id"]
+	InstanceId := (*msg).MsgId
+	log.Printf("new vpssuccess finish, userId:%v,instanceId:%s\n", userId, InstanceId)
+	return nil
+}
+
+func VpsNewFail(pub broker.Event) error {
+	newVpsFlag = false
+	log.Printf("##############new vpsfail start")
+	var msg *mnPB.MnErrMsg
+	if err := json.Unmarshal(pub.Message().Body, &msg); err != nil {
+		return err
+	}
+	userId := pub.Message().Header["user_id"]
+	log.Printf("new vpsfail finish, userId:%v,failmsg:%v\n", userId, msg)
+	return nil
+}
+
+func VpsNew(role string) error {
+	service := "vps"
+	serviceName = config.GetServiceName(service)
+	srv := common.GetMicroClient(service)
+
+	client := pb.NewVpsService(serviceName, srv.Client())
+	_, err := client.CreateVps(context.Background(), &pb.CreateVpsRequest{
+		ClusterName: "cluster1",
+		Role:        role,
+		VolumeSize:  0,
+	})
+	if err != nil {
+		return err
+	}
+	newVpsFlag = true
+
+	return nil
+}
+
+func vpsExist(privateIp string, nodes []swarm.Node) bool {
+	for _, node := range nodes {
+		if privateIp == node.Status.Addr {
+			return true
+		}
+	}
+	return false
+}
+
+func RemoveNovalidVolume() error {
+	c, err := uec2.NewEc2Client(mnhostTypes.ZONE_DEFAULT, mnhostTypes.AWS_ACCOUNT)
+	if err != nil {
+		return err
+	}
+
+	infos, err := c.GetDescribeVolumes([]string{})
+	for _, info := range infos.Volumes {
+		instanceId := aws.StringValue(info.Attachments[0].InstanceId)
+		log.Printf("InstanceId:%s\n", instanceId)
+	}
+
+	return nil
+}

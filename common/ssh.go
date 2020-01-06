@@ -7,12 +7,14 @@ import (
 
 	//"math"
 	//"strconv"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	//"github.com/robfig/cron"
 
+	"github.com/John-Tonny/mnhost/conf"
 	"github.com/John-Tonny/mnhost/model"
 	mnhostTypes "github.com/John-Tonny/mnhost/types"
 
@@ -33,9 +35,10 @@ const ROLE_MANAGER = "manager"
 const SSH_PASSWORD = "vpub$999000"*/
 
 func SshNewClient(publicIp, privateIp, password string) *gossh.Client {
-	ipAddress := publicIp
-	if mnhostTypes.PUBLIC_IP_ENABLED == 0 {
-		ipAddress = privateIp
+	ipAddress := privateIp
+	if config.GetMyConst("publicIpEnabled") == "1" {
+		//if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
+		ipAddress = publicIp
 	}
 	c := gossh.New(ipAddress, mnhostTypes.LOGIN_USER)
 	if c == nil {
@@ -59,7 +62,8 @@ func GetNodeIp(publicIp, privateIp, coinName string, rpcPort int, wg *sync.WaitG
 	nodeIpResponse := &mnhostTypes.NodeIpResponse{}
 	request := gorequest.New().Timeout(5000 * time.Millisecond)
 	ipAddress := privateIp
-	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
+	if config.GetMyConst("publicIpEnabled") == "1" {
+		//if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
 		ipAddress = publicIp
 	}
 
@@ -172,16 +176,26 @@ func NodeReadyData(publicIp, privateIp, coinName string, rpcPort int, wg *sync.W
 		panic(err)
 	}
 
+	publicIp, privateIp, instanceId, _, err := AllocateVps()
+	if err != nil {
+		panic(err)
+	}
+
+	rpcport, port, err := getRpcPort()
+	if err != nil {
+		panic(err)
+	}
+
 	deviceName := ""
 	odeviceName := tnode.DeviceName
 	volumeId := ""
-	for i := 0; i < 21; i++ {
+	for i := 0; i < 26; i++ {
 		deviceName, err = GetDeviceName(privateIp, odeviceName)
 		if err != nil {
 			return err
 		}
 		log.Printf("####start deviceName:%s=%d\n", deviceName, i)
-		volumeId, err = VolumeReady(tvps.RegionName, tcoin.SnapshotId, tnode.InstanceId, deviceName, tnode.VolumeId)
+		volumeId, err = VolumeReady(tvps.RegionName, tcoin.SnapshotId, instanceId, deviceName, tnode.VolumeId)
 		if err == nil {
 			break
 		}
@@ -201,6 +215,11 @@ func NodeReadyData(publicIp, privateIp, coinName string, rpcPort int, wg *sync.W
 	log.Printf("deviceName1:%s\n", deviceName)
 
 	o = orm.NewOrm()
+	tnode.RpcPort = rpcport
+	tnode.Port = port
+	tnode.PublicIp = publicIp
+	tnode.PrivateIp = privateIp
+	tnode.InstanceId = instanceId
 	tnode.DeviceName = deviceName
 	tnode.VolumeId = volumeId
 	tnode.VolumeState = "attached"
@@ -251,7 +270,8 @@ func NodeRemoveData(publicIp, privateIp, coinName string, rpcPort int) error {
 	basicResponse := &mnhostTypes.BasicResponse{}
 	request := gorequest.New().Timeout(5000 * time.Millisecond)
 	ipAddress := privateIp
-	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
+	if config.GetMyConst("publicIpEnabled") == "1" {
+		//if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
 		ipAddress = publicIp
 	}
 
@@ -310,7 +330,8 @@ func GetVpsResource(publicIp, privateIp, role string, inputQ chan mnhostTypes.Re
 
 	request := gorequest.New().Timeout(5000 * time.Millisecond)
 	ipAddress := privateIp
-	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
+	if config.GetMyConst("publicIpEnabled") == "1" {
+		//if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
 		ipAddress = publicIp
 	}
 	url := fmt.Sprintf("http://%s:%d/GetSysStatus", ipAddress, mnhostTypes.SYS_MONITOR_PORT)
@@ -367,15 +388,18 @@ func NodeReadyConfig(publicIp, privateIp, coinName string, rpcPort int, wg *sync
 
 	nodeName := fmt.Sprintf("%s%d", coinName, rpcPort)
 	deviceName := fmt.Sprintf("%s%s", mnhostTypes.DEVICE_NAME_PREFIX, tnode.DeviceName)
+	log.Printf("ready config :%s-%s\n", nodeName, deviceName)
 	err = EbsMount(tnode.PublicIp, tnode.PrivateIp, deviceName, nodeName)
 	if err != nil {
+		log.Printf("ready config error3:%+v\n", err)
 		panic(err)
 	}
 
 	basicResponse := &mnhostTypes.BasicResponse{}
 	request := gorequest.New().Timeout(5000 * time.Millisecond)
 	ipAddress := privateIp
-	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
+	if config.GetMyConst("publicIpEnabled") == "1" {
+		//if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
 		ipAddress = publicIp
 	}
 
@@ -515,7 +539,8 @@ func EfsMount(publicIp, privateIp, password string) error {
 	basicResponse := &mnhostTypes.BasicResponse{}
 	request := gorequest.New().Timeout(5000 * time.Millisecond)
 	ipAddress := privateIp
-	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
+	if config.GetMyConst("publicIpEnabled") == "1" {
+		//if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
 		ipAddress = publicIp
 	}
 	url := fmt.Sprintf("http://%s:%d/Mount", ipAddress, mnhostTypes.SYS_MONITOR_PORT)
@@ -539,7 +564,8 @@ func EbsMount(publicIp, privateIp, deviceName, nodeName string) error {
 	basicResponse := &mnhostTypes.BasicResponse{}
 	request := gorequest.New().Timeout(5000 * time.Millisecond)
 	ipAddress := privateIp
-	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
+	if config.GetMyConst("publicIpEnabled") == "1" {
+		//if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
 		ipAddress = publicIp
 	}
 	url := fmt.Sprintf("http://%s:%d/MountEbs", ipAddress, mnhostTypes.SYS_MONITOR_PORT)
@@ -702,4 +728,228 @@ func deviceExist(deviceName string, tnodes *[]models.TNode) bool {
 		}
 	}
 	return false
+}
+
+func AllocateVps() (string, string, string, string, error) {
+	var tvpss []models.TVps
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_vps")
+	nums, err := qs.All(&tvpss)
+	if err != nil {
+		return "", "", "", "", err
+	}
+
+	if nums == 0 {
+		return "", "", "", "", errors.New("no vps")
+	}
+
+	type NodeInfo struct {
+		PrivateIp string
+		Nums      int
+	}
+
+	var nodes []NodeInfo
+	for _, tvps := range tvpss {
+		var tnodes []models.TNode
+		o = orm.NewOrm()
+		qs = o.QueryTable("t_node")
+		nodenums, err := qs.Filter("privateIp", tvps.PrivateIp).All(&tnodes)
+		if err != nil {
+			return "", "", "", "", err
+		}
+		nodes = append(nodes, NodeInfo{tvps.PrivateIp, int(nodenums)})
+	}
+
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].Nums < nodes[j].Nums // 升序
+		//return nodes[i].Nums > nodes[j].Nums // 降序
+	})
+	publicIp, instanceId, regionName, err := GetPublicIpFromVps(nodes[0].PrivateIp)
+	if err != nil {
+		return "", nodes[0].PrivateIp, "", "", err
+	}
+
+	return publicIp, nodes[0].PrivateIp, instanceId, regionName, nil
+}
+
+func getRpcPort() (int, int, error) {
+	rpcport := mnhostTypes.PORT_FROM
+	port := rpcport + 1
+
+	var tnodes []models.TNode
+	o := orm.NewOrm()
+	qs := o.QueryTable("t_node")
+	nums, err := qs.All(&tnodes)
+	if err != nil {
+		return 0, 0, err
+	}
+	if nums == 0 {
+		return rpcport, port, nil
+	}
+
+	for i := mnhostTypes.PORT_FROM; i < mnhostTypes.PORT_TO; i = i + 2 {
+		if portExist(i, &tnodes) == false {
+			return i, i + 1, nil
+		}
+	}
+	return 0, 0, errors.New("port is full")
+}
+
+func portExist(port int, tnodes *[]models.TNode) bool {
+	for _, node := range *tnodes {
+		if node.RpcPort == port {
+			return true
+		}
+	}
+	return false
+}
+
+func GetDiskInfo(tnode models.TNode, wg *sync.WaitGroup) (int64, int64, error) {
+	o := orm.NewOrm()
+	tnode.VolumeTotal = -1
+	tnode.VolumeFree = -1
+	diskInfo := mnhostTypes.DiskInfo{
+		Total: -1.0,
+		Free:  -1.0,
+	}
+	defer func() {
+		log.Printf("***getDiskInfo exit:%s-%s%d\n", tnode.PublicIp, tnode.CoinName, tnode.RpcPort)
+		_, err1 := o.Update(&tnode)
+		if err1 != nil {
+			log.Printf("diskinfo update error:%+v\n", err1)
+		}
+		wg.Done()
+		err := recover()
+		if err != nil {
+			log.Printf("get diskinfo error:%+v\n", err)
+		}
+	}()
+
+	if tnode.Status != "finish" {
+		panic(errors.New("status is not finish"))
+	}
+
+	log.Printf("***get diskinfo:%s-%s%d\n", tnode.PublicIp, tnode.CoinName, tnode.RpcPort)
+
+	request := gorequest.New().Timeout(5000 * time.Millisecond)
+	ipAddress := tnode.PrivateIp
+	if config.GetMyConst("publicIpEnabled") == "1" {
+		//if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
+		ipAddress = tnode.PublicIp
+	}
+
+	nodeName := fmt.Sprintf("%s%d", tnode.CoinName, tnode.RpcPort)
+	log.Printf("*****device:%s\n", nodeName)
+	url := fmt.Sprintf("http://%s:%d/GetDiskInfo", ipAddress, mnhostTypes.SYS_MONITOR_PORT)
+	params := &mnhostTypes.NameRequest{
+		Name: nodeName,
+	}
+	for i := 0; i < 5; i++ {
+		resp, _, err1 := request.Post(url).
+			SendStruct(params).
+			EndStruct(&diskInfo)
+		log.Printf("diskinfo:%+v\n", resp)
+		if err1 != nil {
+			continue
+		} else {
+			if resp.StatusCode != 200 {
+				continue
+			}
+
+			if diskInfo.Code != "200" {
+				continue
+			}
+			tnode.VolumeTotal = diskInfo.Total
+			tnode.VolumeFree = diskInfo.Free
+			break
+		}
+	}
+
+	log.Printf("diskinfo:%s-%d-%d-%s%d\n", tnode.PublicIp, diskInfo.Total, diskInfo.Free, tnode.CoinName, tnode.RpcPort)
+	return diskInfo.Total, diskInfo.Free, nil
+}
+
+func EbsModify(tnode models.TNode, size int64, c *uec2.EC2Client, wg *sync.WaitGroup) error {
+	defer func() {
+		wg.Done()
+		err := recover()
+		if err != nil {
+			log.Printf("ebs modify error:%+v\n", err)
+		}
+	}()
+	if tnode.Status != "finish" {
+		panic(errors.New("status is not finish"))
+	}
+
+	deviceName := fmt.Sprintf("%s%s", mnhostTypes.DEVICE_NAME_PREFIX, tnode.DeviceName)
+	log.Printf("***ebs modify:%s-%s-%s\n", tnode.PublicIp, tnode.VolumeId, deviceName)
+
+	result, err := c.GetDescribeVolumes([]string{tnode.VolumeId})
+	if err != nil {
+		panic(err)
+	}
+	if result == nil {
+		panic(errors.New("result is nil"))
+	}
+	log.Printf("volume:%s\n", result)
+
+	osize := aws.Int64Value(result.Volumes[0].Size)
+	if osize > size {
+		panic(errors.New("volume haved modify"))
+	}
+
+	_, err = c.ModifyVolumes(tnode.VolumeId, size)
+	if err != nil {
+		//panic(err)
+	}
+
+	time.Sleep(time.Second * 10)
+
+	request := gorequest.New().Timeout(5000 * time.Millisecond)
+	ipAddress := tnode.PrivateIp
+	if mnhostTypes.PUBLIC_IP_ENABLED == 1 {
+		ipAddress = tnode.PublicIp
+	}
+
+	url := fmt.Sprintf("http://%s:%d/ModifyEbs", ipAddress, mnhostTypes.SYS_MONITOR_PORT)
+	basicResponse := &mnhostTypes.BasicResponse{}
+	params := &mnhostTypes.NameRequest{
+		Name: deviceName,
+	}
+	for i := 0; i < 5; i++ {
+		resp, _, err1 := request.Post(url).
+			SendStruct(params).
+			EndStruct(&basicResponse)
+		log.Printf("ebs modify:%+v\n", resp)
+		if err1 != nil {
+			continue
+		} else {
+			if resp.StatusCode != 200 {
+				continue
+			}
+
+			if basicResponse.Code != "200" {
+				continue
+			}
+			break
+		}
+	}
+
+	time.Sleep(time.Second * 5)
+
+	result, err = c.GetDescribeVolumes([]string{tnode.VolumeId})
+	if err != nil {
+		panic(err)
+	}
+	if result == nil {
+		panic(errors.New("result is nil"))
+	}
+	log.Printf("volume:%s\n", result)
+
+	if aws.Int64Value(result.Volumes[0].Size) != size {
+		panic(errors.New("volume size dismatch"))
+	}
+
+	log.Printf("success ebs modify:%s-%s-%s\n", tnode.PublicIp, tnode.VolumeId, deviceName)
+	return nil
 }

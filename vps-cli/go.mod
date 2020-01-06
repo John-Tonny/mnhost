@@ -30,6 +30,7 @@ replace github.com/John-Tonny/mnhost/interface/out/vps => /root/mygo/src/github.
 
 require (
 	github.com/John-Tonny/mnhost/common v0.0.0-00010101000000-000000000000 // indirect
+	github.com/John-Tonny/mnhost/interface/out/monitor v0.0.0-20191231073638-f4380469eb80 // indirect
 	github.com/John-Tonny/mnhost/interface/out/vps v0.0.0-00010101000000-000000000000 // indirect
 	github.com/dongjialong2006/log v0.0.0-20181213075813-1c1f8dfa5a28 // indirect
 	github.com/dongjialong2006/monitor v0.0.0-20180808054500-5bd25b886bae // indirect

@@ -141,8 +141,8 @@ func main() {
 	// 创建 user-service 微服务的客户端
 	client1 := pb.NewVpsService(serviceName, srv.Client())
 
-	start := 223
-	//stop := 220
+	start := 12
+	stop := 22
 	starts := strconv.Itoa(start)
 	resp, err := client1.RemoveNode(context.Background(), &pb.Request{
 		Id: starts,
@@ -158,15 +158,15 @@ func main() {
 		log.Println("new node: ", msg)*/
 		log.Println(resp)
 	}
-	/*
-		var wg sync.WaitGroup
-		wg.Add(9)
-		for i := start + 1; i <= stop; i++ {
-			id := strconv.Itoa(i)
-			go delnode(id, srv, &wg)
-		}
-		wg.Wait()
-	*/
+
+	var wg sync.WaitGroup
+	wg.Add(9)
+	for i := start + 1; i <= stop; i++ {
+		id := strconv.Itoa(i)
+		go delnode(id, srv, &wg)
+	}
+	wg.Wait()
+
 }
 
 func delnode(id string, srv micro.Service, wg *sync.WaitGroup) {
@@ -187,7 +187,7 @@ func delnode(id string, srv micro.Service, wg *sync.WaitGroup) {
 	})
 
 	if err != nil {
-		log.Printf("new node error:%d---%v", id, err)
+		log.Printf("new node error:%s---%v", id, err)
 	} else {
 		/*var msg interface{}
 		if err := json.Unmarshal(resp.Mix, &msg); err != nil {

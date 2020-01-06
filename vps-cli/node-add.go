@@ -1,7 +1,9 @@
 package main
 
 import (
+	//"fmt"
 	"log"
+	"strconv"
 	"sync"
 
 	//json "github.com/json-iterator/go"
@@ -32,7 +34,7 @@ func main() {
 
 	client := pb.NewVpsService(serviceName, srv.Client())
 	resp, err := client.CreateNode(context.Background(), &pb.Request{
-		Id: "4",
+		Id: "14",
 	})
 	if err != nil {
 		log.Printf("new node error: %v", err)
@@ -46,12 +48,12 @@ func main() {
 	}
 
 	/*var wg sync.WaitGroup
-	wg.Add(11)
-	for i := 0; i < 9; i++ {
+	wg.Add(5)
+	for i := 21; i < 26; i++ {
 		go addnode(srv, i, &wg)
 	}
-	wg.Wait()*/
-
+	wg.Wait()
+	*/
 }
 
 func addnode(srv micro.Service, nums int, wg *sync.WaitGroup) {
@@ -66,7 +68,7 @@ func addnode(srv micro.Service, nums int, wg *sync.WaitGroup) {
 	log.Printf("aaa:%d\n", nums)
 	client := pb.NewVpsService(serviceName, srv.Client())
 	_, err := client.CreateNode(context.Background(), &pb.Request{
-		Id: "1",
+		Id: strconv.Itoa(nums),
 	})
 	if err != nil {
 		log.Printf("new node error: %v-%d", err, nums)

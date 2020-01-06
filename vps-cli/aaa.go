@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
 	//"strconv"
 
@@ -21,11 +22,36 @@ import (
 
 	//"github.com/aws/aws-sdk-go/service/ec2"
 
+	"github.com/astaxie/beego/orm"
+
+	"github.com/John-Tonny/mnhost/model"
+
 	mnhostTypes "github.com/John-Tonny/mnhost/types"
 	"github.com/docker/docker/api/types"
 )
 
 func main() {
+	
+		now := time.Now().Unix()
+		log.Printf("now:%T-%+v\n", now, now)
+		var tcoins []models.TCoin
+		o := orm.NewOrm()
+		qs := o.QueryTable("t_coin")
+		nums, err := qs.Filter("status", "Enabled").All(&tcoins)
+		if err != nil {
+		}
+
+		if nums == 0 {
+		}
+		
+		for _, tcoin := range tcoins {
+			post := tcoin.Updatetime.Unix()
+			log.Printf("kkkkk:%T-%+v\n", post, post)
+			log.Printf("####:%d\n", now-post)
+
+			
+		}
+
 	log.Println("start ssh")
 
 	mc, _, err := common.DockerNewClient("3.136.202.223", "172.31.38.42")
@@ -60,12 +86,14 @@ func main() {
 	//device_name_to := "z"
 
 	//bbb, _ := strconv.Atoi(device_name_from)
-	aaa := mnhostTypes.DEVICE_NAME_FROM[0]
+	//aaa := mnhostTypes.DEVICE_NAME_FROM[0]
+	xxx := "a"
+	aaa := xxx[0]
 	var i byte
-	for i = 0; i < 5; i++ {
-		tmp := fmt.Sprintf("xvd%s", string(aaa+i))
+	for i = 0; i < 26; i++ {
+		tmp := fmt.Sprintf("xvda%s", string(aaa+i))
 		//bbb, err := fmt.Printf("ascii:%d\n", device_name_from)
-		VolumeReady("us-east-2c", "snap-0ad4e0a1bde0756b0", "i-083b1853579c7b922", tmp, "")
+		VolumeReady("us-east-2c", "snap-0ad4e0a1bde0756b0", "i-05d859a4785faef3e", tmp, "")
 		//VolumeReady("us-east-2c", "snap-0ad4e0a1bde0756b0", "i-0bd52b6e186750423", tmp, "")
 		//VolumeReady("us-east-2c", "snap-0ad4e0a1bde0756b0", "i-037766032a069aac6", tmp, "")
 		fmt.Println(tmp)

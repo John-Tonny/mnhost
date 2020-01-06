@@ -26,6 +26,13 @@ type ResourceInfo struct {
 	Role       string
 }
 
+type DiskInfo struct {
+	Code    string
+	CodeMsg string
+	Total   int64
+	Free    int64
+}
+
 type CoinConf struct {
 	CoinName   string
 	RpcPort    int
@@ -73,6 +80,14 @@ type NodeInfo struct {
 
 type NodeMap struct {
 	Node map[string]*NodeInfo
+}
+
+type CoinInfo struct {
+	Status bool
+}
+
+type CoinMap struct {
+	Coin map[string]*CoinInfo
 }
 
 type ServiceInfo struct {
@@ -138,9 +153,9 @@ const PORT_TO = 65530
 const S_PORT = "9998"
 const S_RPCPROT = "9999"
 const S_WORKDIR = "vircle"
-const DEVICE_NAME_FROM = "f"
+const DEVICE_NAME_FROM = "a"
 const DEVICE_NAME_TO = "z"
-const DEVICE_NAME_PREFIX = "xvd"
+const DEVICE_NAME_PREFIX = "xvda"
 
 const TEST_VOLUME_SIZE = 1
 
@@ -149,7 +164,7 @@ const NFS_HOST = "172.31.43.253"
 const NFS_PATH = "/mnt/efs"
 const DOCKER_API_VERSION = "1.40"
 const AWS_ACCOUNT = "test-account"
-const SYSTEM_IMAGE = "ami-0987f4b3af1ef6791" //"ami-05c4f64b6f704720f" // "ami-0815b98db1e19417a" //"ami-0b0426f6bc13cbfe4"
+const SYSTEM_IMAGE = "ami-0cc887bcfcf25bccd" //"ami-0987f4b3af1ef6791" //"ami-05c4f64b6f704720f" // "ami-0815b98db1e19417a" //"ami-0b0426f6bc13cbfe4"
 const ZONE_DEFAULT = "us-east-2"
 const INSTANCE_TYPE_DEFAULT = "t2.small" //"t2.micro"
 const VOLUME_SIZE_DEFAULT = 20
