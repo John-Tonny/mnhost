@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"log"
-	"strconv"
+
+	//"strconv"
 	"time"
 
 	json "github.com/json-iterator/go"
@@ -18,24 +19,11 @@ import (
 	logPB "github.com/John-Tonny/mnhost/interface/out/log"
 	mnPB "github.com/John-Tonny/mnhost/interface/out/mnmsg"
 	vps "github.com/John-Tonny/mnhost/interface/out/vps"
+	mnhostTypes "github.com/John-Tonny/mnhost/types"
 )
 
 const cservice = "mnmsg"
 const oservice = "vps"
-const topic_newnode_success = "Vircle.Mnhost.Topic.NodeNew.Success"
-const topic_newnode_fail = "Vircle.Mnhost.Topic.NodeNew.Fail"
-const topic_newnode_start = "Vircle.Mnhost.Topic.NodeNew.Start"
-const topic_newnode_stop = "Vircle.Mnhost.Topic.NodeNew.Stop"
-
-const topic_delnode_success = "Vircle.Mnhost.Topic.NodeDel.Success"
-const topic_delnode_fail = "Vircle.Mnhost.Topic.NodeDel.Fail"
-const topic_delnode_start = "Vircle.Mnhost.Topic.NodeDel.Start"
-const topic_delnode_stop = "Vircle.Mnhost.Topic.NodeDel.Stop"
-
-const topic_expandvolume_success = "Vircle.Mnhost.Topic.ExpandVolume.Success"
-const topic_expandvolume_fail = "Vircle.Mnhost.Topic.ExpandVolume.Fail"
-const topic_expandvolume_start = "Vircle.Mnhost.Topic.ExpandVolume.Start"
-const topic_expandvolume_stop = "Vircle.Mnhost.Topic.ExpandVolume.Stop"
 
 var (
 	topic        string
@@ -59,62 +47,42 @@ func main() {
 	gBroker = bk
 
 	// 这里订阅了 一个 topic, 并提供接口处理
-	_, err := bk.Subscribe(topic_newnode_start, nodeNewStart)
+	_, err := bk.Subscribe(mnhostTypes.TOPIC_NEWNODE_START, nodeNewStart)
 	if err != nil {
 		log.Fatalf("new node start error: %v\n", err)
 	}
 
-	_, err = bk.Subscribe(topic_newnode_success, nodeNewSuccess)
+	_, err = bk.Subscribe(mnhostTypes.TOPIC_NEWNODE_SUCCESS, nodeNewSuccess)
 	if err != nil {
 		log.Fatalf("new node success error: %v\n", err)
 	}
 
-	_, err = bk.Subscribe(topic_newnode_fail, nodeNewFail)
+	_, err = bk.Subscribe(mnhostTypes.TOPIC_NEWNODE_FAIL, nodeNewFail)
 	if err != nil {
 		log.Fatalf("new node fail error: %v\n", err)
 	}
 
-	_, err = bk.Subscribe(topic_newnode_stop, nodeNewStop)
+	_, err = bk.Subscribe(mnhostTypes.TOPIC_NEWNODE_STOP, nodeNewStop)
 	if err != nil {
 		log.Fatalf("new node stop error: %v\n", err)
 	}
 
-	_, err = bk.Subscribe(topic_delnode_start, nodeDelStart)
+	_, err = bk.Subscribe(mnhostTypes.TOPIC_DELNODE_START, nodeDelStart)
 	if err != nil {
 		log.Fatalf("del node start error: %v\n", err)
 	}
 
-	_, err = bk.Subscribe(topic_delnode_success, nodeDelSuccess)
+	_, err = bk.Subscribe(mnhostTypes.TOPIC_DELNODE_SUCCESS, nodeDelSuccess)
 	if err != nil {
 		log.Fatalf("del node success error: %v\n", err)
 	}
 
-	_, err = bk.Subscribe(topic_delnode_fail, nodeDelFail)
+	_, err = bk.Subscribe(mnhostTypes.TOPIC_DELNODE_FAIL, nodeDelFail)
 	if err != nil {
 		log.Fatalf("del node fail error: %v\n", err)
 	}
 
-	_, err = bk.Subscribe(topic_delnode_stop, nodeDelStop)
-	if err != nil {
-		log.Fatalf("del node stop error: %v\n", err)
-	}
-
-	_, err = bk.Subscribe(topic_expandvolume_start, expandVolumeStart)
-	if err != nil {
-		log.Fatalf("del node success error: %v\n", err)
-	}
-
-	_, err = bk.Subscribe(topic_expandvolume_success, expandVolumeSuccess)
-	if err != nil {
-		log.Fatalf("del node success error: %v\n", err)
-	}
-
-	_, err = bk.Subscribe(topic_expandvolume_success, expandVolumeFail)
-	if err != nil {
-		log.Fatalf("del node fail error: %v\n", err)
-	}
-
-	_, err = bk.Subscribe(topic_expandvolume_stop, expandVolumeStop)
+	_, err = bk.Subscribe(mnhostTypes.TOPIC_DELNODE_STOP, nodeDelStop)
 	if err != nil {
 		log.Fatalf("del node stop error: %v\n", err)
 	}
@@ -131,37 +99,35 @@ func nodeNewStart(pub broker.Event) error {
 	method := "nodeNewStart"
 	var msg *mnPB.MnMsg
 	if err := json.Unmarshal(pub.Message().Body, &msg); err != nil {
-		pubErrMsg(userId, method, utils.JSON_DATAERR, "", topic_newnode_fail)
+		pubErrMsg(userId, method, utils.JSON_DATAERR, "", mnhostTypes.TOPIC_NEWNODE_FAIL)
 		return err
 	}
-	id := (*msg).Id
+	sId := (*msg).MsgId
 
 	srv := common.GetMicroClient(oservice)
 	// 创建 user-service 微服务的客户端
 	client := vps.NewVpsService(oserviceName, srv.Client())
 
-	sId := strconv.FormatInt(id, 10)
-
 	retrys := 0
 	for {
 		retrys++
 		if retrys > 10 {
-			pubErrMsg(userId, method, utils.TIMEOUT_VPS, sId, topic_newnode_fail)
+			pubErrMsg(userId, method, utils.TIMEOUT_VPS, sId, mnhostTypes.TOPIC_NEWNODE_FAIL)
 			return errors.New("timeout")
 		}
-		resp, err := client.NewNode(context.Background(), &vps.Request{
-			Id: id,
+		resp, err := client.CreateNode(context.Background(), &vps.Request{
+			Id: sId,
 		})
 		if err == nil {
 			if resp.Errno == utils.RECODE_OK {
-				pubMsg(userId, method, topic_newnode_stop, id)
+				pubMsg(userId, method, mnhostTypes.TOPIC_NEWNODE_STOP, sId)
 				return nil
 			}
 		}
 		time.Sleep(time.Second)
 	}
 
-	pubErrMsg(userId, method, utils.RECODE_SERVERERR, sId, topic_newnode_fail)
+	pubErrMsg(userId, method, utils.RECODE_SERVERERR, sId, mnhostTypes.TOPIC_NEWNODE_FAIL)
 
 	log.Println("new node finish")
 	return nil
@@ -174,7 +140,7 @@ func nodeNewSuccess(pub broker.Event) error {
 		return err
 	}
 	userId := pub.Message().Header["user_id"]
-	orderId := (*msg).Id
+	orderId := (*msg).MsgId
 	log.Printf("new nodesuccess finish, userId:%v,orderId:%d\n", userId, orderId)
 	return nil
 }
@@ -207,31 +173,30 @@ func nodeDelStart(pub broker.Event) error {
 	method := "nodeDelStart"
 	var msg *mnPB.MnMsg
 	if err := json.Unmarshal(pub.Message().Body, &msg); err != nil {
-		pubErrMsg(userId, method, utils.JSON_DATAERR, "", topic_newnode_fail)
+		pubErrMsg(userId, method, utils.JSON_DATAERR, "", mnhostTypes.TOPIC_DELNODE_FAIL)
 		return err
 	}
-	id := (*msg).Id
+	sId := (*msg).MsgId
 
 	srv := common.GetMicroClient(oservice)
 
 	// 创建 user-service 微服务的客户端
 	client := vps.NewVpsService(oserviceName, srv.Client())
 
-	sId := strconv.FormatInt(id, 10)
-	resp, err := client.DelNode(context.Background(), &vps.Request{
-		Id: id,
+	resp, err := client.RemoveNode(context.Background(), &vps.Request{
+		Id: sId,
 	})
 	if err != nil {
-		pubErrMsg(userId, method, utils.RECODE_SERVERERR, sId, topic_newnode_fail)
+		pubErrMsg(userId, method, utils.RECODE_SERVERERR, sId, mnhostTypes.TOPIC_DELNODE_FAIL)
 		return err
 	}
 
 	if resp.Errno == utils.RECODE_OK {
-		pubMsg(userId, method, topic_delnode_stop, id)
+		pubMsg(userId, method, mnhostTypes.TOPIC_DELNODE_STOP, sId)
 		log.Println("del node start finish, userId:%v", userId)
 		return nil
 	}
-	pubErrMsg(userId, method, utils.RECODE_SERVERERR, sId, topic_newnode_fail)
+	pubErrMsg(userId, method, utils.RECODE_SERVERERR, sId, mnhostTypes.TOPIC_DELNODE_FAIL)
 
 	log.Println("del node finish")
 	return nil
@@ -244,7 +209,7 @@ func nodeDelSuccess(pub broker.Event) error {
 		return err
 	}
 	userId := pub.Message().Header["user_id"]
-	nodeId := (*msg).Id
+	nodeId := (*msg).MsgId
 	log.Printf("del node success finish, userId:%v,nodeId:%v\n", userId, nodeId)
 	return nil
 }
@@ -272,50 +237,11 @@ func nodeDelStop(pub broker.Event) error {
 	return nil
 }
 
-func expandVolumeStart(pub broker.Event) error {
-	log.Println("expandVolumeStart start")
-
-	log.Println("expandVolumeStart finish")
-	return nil
-}
-
-func expandVolumeSuccess(pub broker.Event) error {
-	log.Println("expandVolumeSuccess")
-	var msg *mnPB.MnMsg
-	if err := json.Unmarshal(pub.Message().Body, &msg); err != nil {
-		return err
-	}
-	userId := pub.Message().Header["user_id"]
-	log.Printf("expandVolumeSuccess finish, userId:%v\n", userId)
-	return nil
-}
-
-func expandVolumeFail(pub broker.Event) error {
-	log.Printf("expandVolumeFail start")
-	var msg *mnPB.MnErrMsg
-	if err := json.Unmarshal(pub.Message().Body, &msg); err != nil {
-		return err
-	}
-	userId := pub.Message().Header["user_id"]
-	log.Printf("expandVolumeFail finish, userId:%v\n", userId)
-	return nil
-}
-
-func expandVolumeStop(pub broker.Event) error {
-	log.Printf("expandVolumeStop start")
-	var msg *mnPB.MnMsg
-	if err := json.Unmarshal(pub.Message().Body, &msg); err != nil {
-		return err
-	}
-	log.Println("expandVolumetop finish")
-	return nil
-}
-
 // 发送vps
-func pubMsg(userID, method, topic string, msgId int64) error {
+func pubMsg(userID, method, topic string, msgId string) error {
 	log.Printf("start pub msg, topic:%v, msgId:%d\n", topic, msgId)
 	msg := mnPB.MnMsg{
-		Id: msgId,
+		MsgId: msgId,
 	}
 	body, err := json.Marshal(msg)
 	if err != nil {

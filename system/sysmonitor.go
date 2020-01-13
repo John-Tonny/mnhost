@@ -22,6 +22,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 
 	"github.com/go-ini/ini"
+	"github.com/hacdias/fileutils"
 )
 
 type SysInfo struct {
@@ -53,6 +54,7 @@ type MountInfo struct {
 	//必须的大写开头
 	DeviceName string
 	NodeName   string
+	VolumeId   string
 }
 
 type Conf struct {
@@ -121,6 +123,10 @@ const (
 	NFS_HOST     = "172.31.43.253:/"
 )
 
+var (
+	g_devMode bool
+)
+
 func (this *SysController) Get() {
 	v, _ := mem.VirtualMemory()
 	cc, _ := cpu.Percent(time.Second, false)
@@ -141,7 +147,7 @@ func (this *DiskController) Post() {
 	if err != nil {
 		data = &DiskInfo{
 			"400",
-			"参数错误",
+			"磁盘参数错误",
 			-1,
 			-1}
 	} else {
@@ -151,13 +157,13 @@ func (this *DiskController) Post() {
 		if err != nil {
 			data = &DiskInfo{
 				"400",
-				"参数错误",
+				"磁盘参数错误",
 				-1,
 				-1}
 		} else {
 			data = &DiskInfo{
 				"200",
-				"成功",
+				"磁盘成功",
 				int64(info.Total),
 				int64(info.Free)}
 		}
@@ -174,18 +180,18 @@ func (this *ConfController) Post() {
 	if err != nil {
 		data = &RespInfo{
 			"400",
-			"参数错误"}
+			"配置参数错误"}
 	} else {
 		fmt.Printf("conf:%+v\n", conf)
 		if conf.CoinName == "" || conf.RpcPort == 0 || conf.MnKey == "" || conf.ExternalIp == "" || conf.FileName == "" {
 			data = &RespInfo{
 				"400",
-				"参数错误"}
+				"配置参数错误"}
 
 		} else {
 			data = &RespInfo{
 				"200",
-				"成功"}
+				"配置成功"}
 			writeConf(conf)
 
 		}
@@ -229,14 +235,14 @@ func (this *FindNodeController) Post() {
 	if err != nil {
 		data = &NameRespInfo{
 			"400",
-			"参数错误",
+			"查找节点参数错误",
 			""}
 	} else {
 		fmt.Printf("params:%+v\n", params)
 		if params.Name == "" {
 			data = &NameRespInfo{
 				"400",
-				"参数错误",
+				"查找节点参数错误",
 				""}
 
 		} else {
@@ -244,12 +250,12 @@ func (this *FindNodeController) Post() {
 			if err != nil {
 				data = &NameRespInfo{
 					"401",
-					"命令执行错误",
+					"查找节点错误",
 					""}
 			} else {
 				data = &NameRespInfo{
 					"200",
-					"成功",
+					"查找节点成功",
 					nodeIp}
 			}
 		}
@@ -265,11 +271,11 @@ func (this *MountController) Get() {
 	if err != nil {
 		data = &RespInfo{
 			"401",
-			"命令执行错误"}
+			"绑定efs错误"}
 	} else {
 		data = &RespInfo{
 			"200",
-			"成功"}
+			"绑定efs成功"}
 	}
 	this.Data["json"] = data
 	this.ServeJSON()
@@ -283,23 +289,23 @@ func (this *MountEbsController) Post() {
 	if err != nil {
 		data = &RespInfo{
 			"400",
-			"参数错误"}
+			"绑定ebs参数错误"}
 	} else {
 		fmt.Printf("params:%+v\n", params)
-		if params.DeviceName == "" || params.NodeName == "" {
+		if params.DeviceName == "" || params.NodeName == "" || params.VolumeId == "" {
 			data = &RespInfo{
 				"400",
-				"参数错误"}
+				"绑定ebs参数错误"}
 		} else {
-			err := MountEbs(params.DeviceName, params.NodeName)
+			err := MountEbs(params.DeviceName, params.NodeName, params.VolumeId)
 			if err != nil {
 				data = &RespInfo{
 					"401",
-					"命令执行错误"}
+					"绑定ebs错误"}
 			} else {
 				data = &RespInfo{
 					"200",
-					"成功"}
+					"绑定ebs成功"}
 			}
 		}
 	}
@@ -308,30 +314,30 @@ func (this *MountEbsController) Post() {
 }
 
 func (this *ModifyEbsController) Post() {
-	params := NameInfo{}
+	params := MountInfo{}
 	body := this.Ctx.Input.RequestBody
 	err := json.Unmarshal(body, &params)
 	data := &RespInfo{}
 	if err != nil {
 		data = &RespInfo{
 			"400",
-			"参数错误"}
+			"修正ebs参数错误"}
 	} else {
 		fmt.Printf("params:%+v\n", params)
-		if params.Name == "" {
+		if params.DeviceName == "" || params.VolumeId == "" {
 			data = &RespInfo{
 				"400",
-				"参数错误"}
+				"修正ebs参数错误"}
 		} else {
-			err := ModifyEbs(params.Name)
+			err := ModifyEbs(params.DeviceName, params.VolumeId)
 			if err != nil {
 				data = &RespInfo{
 					"401",
-					"命令执行错误"}
+					"修正ebs错误"}
 			} else {
 				data = &RespInfo{
 					"200",
-					"成功"}
+					"修正ebs成功"}
 			}
 		}
 	}
@@ -347,23 +353,23 @@ func (this *UmountEbsController) Post() {
 	if err != nil {
 		data = &RespInfo{
 			"400",
-			"参数错误"}
+			"解绑ebs参数错误"}
 	} else {
 		fmt.Printf("params:%+v\n", params)
 		if params.Name == "" {
 			data = &RespInfo{
 				"400",
-				"参数错误"}
+				"解绑ebs参数错误"}
 		} else {
-			err := UmountEbs(params.Name)
+			err := UmountEbs(params.Name, true)
 			if err != nil {
 				data = &RespInfo{
 					"401",
-					"命令执行错误"}
+					"解绑ebs错误"}
 			} else {
 				data = &RespInfo{
 					"200",
-					"成功"}
+					"解绑ebs成功"}
 			}
 		}
 	}
@@ -372,7 +378,6 @@ func (this *UmountEbsController) Post() {
 }
 
 func writeConf(conf Conf) {
-	//fileName := fmt.Sprintf("%s/%s/%s%d/%s", NFS_PATH, conf.CoinName, NODE_PREFIX, conf.RpcPort, conf.FileName)
 	fileName := fmt.Sprintf("%s/%s%d/%s", MOUNT_PATH, conf.CoinName, conf.RpcPort, conf.FileName)
 	cfg, err := ini.Load(fileName)
 
@@ -411,65 +416,28 @@ func writeConf(conf Conf) {
 	os.RemoveAll(fmt.Sprintf("%s/%s", path1, "testnet3/.lock"))
 }
 
-func restartApp(nodeName string) {
-	name := ""
+func restartApp(nodeName string) error {
 	cmd := exec.Command("docker", "ps", "-a")
-	stdout, err := cmd.StdoutPipe()
+	bFind, name, err := findInfo(cmd, -1, 0, nodeName)
 	if err != nil {
-		return
+		fmt.Printf("fail restart %s\n", nodeName)
+		return err
 	}
 
-	cmd.Start()
-	reader := bufio.NewReader(stdout)
-	//实时循环读取输出流中的一行内容
-	for {
-		line, err2 := reader.ReadString('\n')
-		if err2 != nil || io.EOF == err2 {
-			break
-		}
-		if strings.Contains(line, nodeName) == true {
-			tmp := strings.Split(line, " ")
-			name = tmp[0]
-			fmt.Printf("name:%s-%d\n", name, len(name))
-			break
-		}
-	}
-	cmd.Wait()
-
-	if len(name) > 0 {
+	if bFind && (len(name) > 0) {
 		cmd := exec.Command("docker", "restart", name)
 		cmd.Run()
 	}
-	return
+	return nil
 }
 
 func findNodeName(nodeName string) (string, error) {
-	name := ""
 	cmd := exec.Command("docker", "service", "ps", nodeName)
-	stdout, err := cmd.StdoutPipe()
+	_, name, err := findInfo(cmd, 6, 3, nodeName, "Running")
 	if err != nil {
-		return "", errors.New("exec cmd error")
+		fmt.Printf("fail findnode %s\n", nodeName)
+		return "", err
 	}
-
-	cmd.Start()
-	reader := bufio.NewReader(stdout)
-	//实时循环读取输出流中的一行内容
-	for {
-		line, err2 := reader.ReadString('\n')
-		if err2 != nil || io.EOF == err2 {
-			break
-		}
-		if strings.Contains(line, nodeName) && strings.Contains(line, "Running") {
-			line = DeleteExtraSpace(line)
-			tmp := strings.Split(line, " ")
-			if len(tmp) >= 6 {
-				name = tmp[3]
-				fmt.Printf("name:%s-%d\n", name, len(name))
-				break
-			}
-		}
-	}
-	//cmd.Wait()
 	return name, nil
 }
 
@@ -509,53 +477,79 @@ func MountEfs() error {
 	return nil
 }
 
-func MountEbs(deviceName, nodeName string) error {
-	path := fmt.Sprintf("%s/%s", MOUNT_PATH, nodeName)
-	err := os.MkdirAll(path, os.ModePerm)
+func MountEbs(deviceName, nodeName, volumeId string) error {
+	mpath := fmt.Sprintf("%s/%s", MOUNT_PATH, nodeName)
+	err := os.MkdirAll(mpath, os.ModePerm)
+	if err != nil {
+		fmt.Printf("fail mount %s-%s\n", deviceName, nodeName)
+		return err
+	}
+
+	if !g_devMode {
+		deviceName = fmt.Sprintf("/dev/%s%d", deviceName, 1)
+	} else {
+		deviceName = fmt.Sprintf("%s%s", GetRealDeviceName(volumeId), "p1")
+	}
+
+	cmd := exec.Command("df", "-h")
+	bFind, _, err := findInfo(cmd, -1, -1, deviceName, mpath)
+	if err != nil {
+		fmt.Printf("fail mount %s-%s\n", deviceName, nodeName)
+		return err
+	}
+
+	if !bFind {
+		cmd := exec.Command("df", "-h")
+		bFind, result, err := findInfo(cmd, -1, -1, deviceName)
+		if err != nil {
+			return err
+		}
+
+		if bFind {
+			err = UmountEbs(path.Base(result), false)
+			if err != nil {
+				fmt.Printf("fail mount %s-%s\n", deviceName, nodeName)
+				return err
+			}
+		}
+		cmd = exec.Command("mount", deviceName, mpath)
+		_, err = cmd.CombinedOutput()
+		if err != nil {
+			fmt.Printf("fail mount %s-%s\n", deviceName, nodeName)
+			return err
+		}
+	}
+
+	err = WriteFstab(deviceName, nodeName, volumeId)
 	if err != nil {
 		return err
 	}
 
-	deviceName = fmt.Sprintf("/dev/%s1", deviceName)
-	cmd := exec.Command("mount", deviceName, path)
-	cmd.CombinedOutput()
-
-	//already mounted on
-
-	cmd = exec.Command("df", "-h")
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return errors.New("exec cmd error")
-	}
-
-	cmd.Start()
-	reader := bufio.NewReader(stdout)
-	//实时循环读取输出流中的一行内容
-	fmt.Printf("%s-%s\n", deviceName, path)
-	for {
-		line, err2 := reader.ReadString('\n')
-		if err2 != nil || io.EOF == err2 {
-			break
-		}
-		fmt.Printf("%s\n", line)
-		if strings.Contains(line, deviceName) && strings.Contains(line, path) {
-			fmt.Printf("success mount %s-%s\n", deviceName, nodeName)
-			return nil
-		}
-	}
-
-	return errors.New("no found")
+	fmt.Printf("success mount %s-%s\n", deviceName, mpath)
+	return nil
 }
 
-func ModifyEbs(deviceName string) error {
-	deviceName = fmt.Sprintf("/dev/%s", deviceName)
+func ModifyEbs(deviceName, volumeId string) error {
+	defer func() {
+	}()
+	if !g_devMode {
+		deviceName = fmt.Sprintf("/dev/%s", deviceName)
+	} else {
+		deviceName = GetRealDeviceName(volumeId)
+	}
+	fmt.Printf("deviceName:%s\n", deviceName)
 	cmd := exec.Command("growpart", deviceName, "1")
 	cmd.CombinedOutput()
 	/*if err != nil {
 		return err
 	}*/
 
-	deviceName = fmt.Sprintf("%s1", deviceName)
+	if !g_devMode {
+		deviceName = fmt.Sprintf("%s%d", deviceName, 1)
+	} else {
+		deviceName = fmt.Sprintf("%s%s", deviceName, "p1")
+	}
+	fmt.Printf("deviceName:%s\n", deviceName)
 	cmd = exec.Command("resize2fs", deviceName)
 	_, err := cmd.CombinedOutput()
 	if err != nil {
@@ -567,39 +561,201 @@ func ModifyEbs(deviceName string) error {
 	return nil
 }
 
-func UmountEbs(nodeName string) error {
-	path := fmt.Sprintf("%s/%s", MOUNT_PATH, nodeName)
-	cmd := exec.Command("umount", path)
-	cmd.CombinedOutput()
+func UmountEbs(nodeName string, bDel bool) error {
+	mpath := fmt.Sprintf("%s/%s", MOUNT_PATH, nodeName)
+	defer func() {
+		if bDel {
+			os.RemoveAll(mpath)
+		}
+	}()
 
-	os.RemoveAll(path)
+	cmd := exec.Command("df", "-h")
+	_, deviceName, err := findInfo(cmd, -1, 0, mpath)
+	if err != nil {
+		return err
+	}
 
-	cmd = exec.Command("df", "-h")
+	if bDel {
+		_, uuid, err := GetVolumeUUID(deviceName)
+		if err != nil {
+			return err
+		}
+
+		//删除匹配行
+		info := fmt.Sprintf("/^UUID=%s/d", uuid)
+		cmd = exec.Command("sed", "-i", info, "/etc/fstab")
+		_, err = cmd.CombinedOutput()
+		if err != nil {
+			return err
+		}
+	}
+
+	cmd = exec.Command("umount", "-f", mpath)
+	result, err := cmd.CombinedOutput()
+	if err != nil {
+		if !strings.Contains(string(result), "mountpoint not found") && !strings.Contains(string(result), "not mounted") {
+			fmt.Printf("fail umount %s\n", mpath)
+			return err
+		}
+	}
+
+	fmt.Printf("success umount %s\n", mpath)
+	return nil
+}
+
+func GetDevMode() bool {
+	deviceName := "/dev/nvme"
+	cmd := exec.Command("nvme", "list")
+	bFind, _, err := findInfo(cmd, -1, -1, deviceName)
+	if err != nil {
+		panic(err)
+	}
+
+	return bFind
+}
+
+func GetRealDeviceName(volumeId string) string {
+	deviceName := "/dev/nvme"
+	cmd := exec.Command("nvme", "list")
+	_, realDevName, err := findInfo(cmd, -1, 0, deviceName, volumeId)
+	if err != nil {
+		panic(err)
+	}
+	return realDevName
+}
+
+func WriteFstab(deviceName, nodeName, volumeId string) error {
+	mpath := fmt.Sprintf("%s/%s", MOUNT_PATH, nodeName)
+	fmt.Printf("write fstab:%s-%s\n", deviceName, mpath)
+
+	bFind, uuid, err := GetVolumeUUID(deviceName)
+	if err != nil {
+		return err
+	}
+
+	if bFind && len(uuid) > 0 {
+		err := fileutils.CopyFile("/etc/fstab", "/etc/fstab.orig")
+		if err != nil {
+			return err
+		}
+
+		//删除匹配行
+		info := fmt.Sprintf("/^UUID=%s/d", uuid)
+		cmd := exec.Command("sed", "-i", info, "/etc/fstab")
+		_, err = cmd.CombinedOutput()
+		if err != nil {
+			fmt.Printf("err1:%+v\n", err)
+			return err
+		}
+
+		fmt.Printf("uuid:%s-%s\n", uuid, mpath)
+
+		//增加新行
+		info = fmt.Sprintf("$a\\UUID=%s %s ext4 defaults,nofail 0 0", uuid, mpath)
+		cmd = exec.Command("sed", "-i", info, "/etc/fstab")
+		_, err = cmd.CombinedOutput()
+		if err != nil {
+			fmt.Println(err)
+			return err
+		}
+
+		//卸载
+		err = UmountEbs(nodeName, false)
+		if err != nil {
+			return err
+		}
+
+		//绑定
+		cmd = exec.Command("mount", "-a")
+		_, err = cmd.CombinedOutput()
+		if err != nil {
+			//还原
+			err = fileutils.CopyFile("/etc/fstab.orig", "/etc/fstab")
+			if err != nil {
+				return err
+			}
+			return errors.New("mount error")
+		}
+		return nil
+
+	}
+
+	return errors.New("no found")
+}
+
+func readByLine(filename string) (lines [][]byte, err error) {
+	fp, err := os.Open(filename) // 获取文件指针
+	if err != nil {
+		return nil, err
+	}
+	defer fp.Close()
+	bufReader := bufio.NewReader(fp)
+	for {
+		line, _, err := bufReader.ReadLine() // 按行读
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				break
+			}
+		} else {
+			lines = append(lines, line)
+		}
+	}
+	return
+}
+
+func findInfo(cmd *exec.Cmd, total, pos int, infos ...string) (bool, string, error) {
+	result := ""
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return errors.New("exec cmd error")
+		return false, "", err
 	}
 
 	cmd.Start()
 	reader := bufio.NewReader(stdout)
 	//实时循环读取输出流中的一行内容
-	fmt.Printf("%s\n", path)
 	for {
 		line, err2 := reader.ReadString('\n')
 		if err2 != nil || io.EOF == err2 {
 			break
 		}
-		fmt.Printf("%s\n", line)
-		if strings.Contains(line, path) {
-			return errors.New("fail umount error")
+		sFind := true
+		for _, info := range infos {
+			if !strings.Contains(line, info) {
+				sFind = false
+				break
+			}
+		}
+
+		if sFind {
+			line = DeleteExtraSpace(line)
+			tmp := strings.Split(line, " ")
+			if len(tmp) >= total || total == -1 {
+				if pos == -1 {
+					pos = len(tmp) - 1
+				}
+				result = tmp[pos]
+				result = strings.Replace(result, " ", "", -1)
+				result = strings.Replace(result, "\n", "", -1)
+				result = strings.Replace(result, "\r", "", -1)
+				fmt.Printf("result:%s\n", result)
+				return true, result, nil
+			}
 		}
 	}
 
-	fmt.Printf("umount %s\n", path)
-	return nil
+	return false, "", nil
+}
+
+func GetVolumeUUID(deviceName string) (bool, string, error) {
+	cmd := exec.Command("lsblk", "-o", "+UUID", deviceName)
+	sFinds := strings.Split(deviceName, "/")
+	return findInfo(cmd, 7, -1, sFinds[len(sFinds)-1])
 }
 
 func main() {
+	g_devMode = GetDevMode()
+	fmt.Printf("devMode:%t\n", g_devMode)
 	beego.BConfig.CopyRequestBody = true
 	beego.Router("/GetSysStatus", &SysController{})
 	beego.Router("/GetDiskInfo", &DiskController{})

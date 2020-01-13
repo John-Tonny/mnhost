@@ -500,7 +500,7 @@ func (e *Vps) processCreateNode(orderId int64, clusterName string) error {
 	errcode, err := NewNode(orderId, clusterName)
 	if err != nil {
 		e.pubErrMsg(userId, "newnode", errcode, err.Error(), mnhostTypes.TOPIC_NEWNODE_FAIL)
-		log.Printf("err:%s-%s\n", errcode, err)
+		log.Printf("new node err:%s-%s\n", errcode, err)
 		return err
 	}
 
@@ -527,6 +527,7 @@ func (e *Vps) processRemoveNode(nodeId int64, clusterName string) error {
 	errcode, err := DelNode(nodeId, clusterName)
 	if err != nil {
 		e.pubErrMsg(userId, "delnode", errcode, err.Error(), mnhostTypes.TOPIC_DELNODE_FAIL)
+		log.Printf("remove node err:%s-%s\n", errcode, err)
 		return err
 	}
 
@@ -870,6 +871,7 @@ func NewNode(orderId int64, clusterName string) (string, error) {
 
 func DelNode(nodeId int64, clusterName string) (string, error) {
 	defer func() {
+
 	}()
 	log.Printf("start del node from nodeId:%d\n", nodeId)
 

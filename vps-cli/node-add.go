@@ -3,6 +3,7 @@ package main
 import (
 	//"fmt"
 	"log"
+	"os"
 	"strconv"
 	"sync"
 
@@ -32,9 +33,12 @@ func main() {
 
 	// 创建 user-service 微服务的客户端
 
+	orderId := os.Args[1]
+	log.Printf("orderId:%s\n", orderId)
+
 	client := pb.NewVpsService(serviceName, srv.Client())
 	resp, err := client.CreateNode(context.Background(), &pb.Request{
-		Id: "14",
+		Id: orderId,
 	})
 	if err != nil {
 		log.Printf("new node error: %v", err)

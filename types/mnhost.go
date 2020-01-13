@@ -50,6 +50,7 @@ type MountRequest struct {
 	//必须的大写开头
 	DeviceName string
 	NodeName   string
+	VolumeId   string
 }
 
 type BasicResponse struct {
@@ -120,30 +121,37 @@ const SYS_MONITOR_PORT = 8844
 const TOPIC_NEWVPS_SUCCESS = "Vircle.Mnhost.TOPIC.VpsNew.Success"
 const TOPIC_NEWVPS_FAIL = "Vircle.Mnhost.TOPIC.VpsNew.Fail"
 const TOPIC_NEWVPS_START = "Vircle.Mnhost.TOPIC.VpsNew.Start"
+const TOPIC_NEWVPS_STOP = "Vircle.Mnhost.TOPIC.VpsNew.Stop"
 
 const TOPIC_DELVPS_SUCCESS = "Vircle.Mnhost.TOPIC.VpsDel.Success"
 const TOPIC_DELVPS_FAIL = "Vircle.Mnhost.TOPIC.VpsDel.Fail"
 const TOPIC_DELVPS_START = "Vircle.Mnhost.TOPIC.VpsDel.Start"
+const TOPIC_DELVPS_STOP = "Vircle.Mnhost.TOPIC.VpsDel.Stop"
 
 const TOPIC_NEWNODE_SUCCESS = "Vircle.Mnhost.TOPIC.NodeNew.Success"
 const TOPIC_NEWNODE_FAIL = "Vircle.Mnhost.TOPIC.NodeNew.Fail"
 const TOPIC_NEWNODE_START = "Vircle.Mnhost.TOPIC.NodeNew.Start"
+const TOPIC_NEWNODE_STOP = "Vircle.Mnhost.TOPIC.NodeNew.Stop"
 
 const TOPIC_DELNODE_SUCCESS = "Vircle.Mnhost.TOPIC.NodeDel.Success"
 const TOPIC_DELNODE_FAIL = "Vircle.Mnhost.TOPIC.NodeDel.Fail"
 const TOPIC_DELNODE_START = "Vircle.Mnhost.TOPIC.NodeDel.Start"
+const TOPIC_DELNODE_STOP = "Vircle.Mnhost.TOPIC.NodeDel.Stop"
 
 const TOPIC_EXPANDVOLUME_SUCCESS = "Vircle.Mnhost.TOPIC.ExpandVolume.Success"
 const TOPIC_EXPANDVOLUME_FAIL = "Vircle.Mnhost.TOPIC.ExpandVolume.Fail"
 const TOPIC_EXPANDVOLUME_START = "Vircle.Mnhost.TOPIC.ExpandVolume.Start"
+const TOPIC_EXPANDVOLUME_STOP = "Vircle.Mnhost.TOPIC.ExpandVolume.Stop"
 
 const TOPIC_RESTARTNODE_SUCCESS = "Vircle.Mnhost.TOPIC.RestartNode.Success"
 const TOPIC_RESTARTNODE_FAIL = "Vircle.Mnhost.TOPIC.RestartNode.Fail"
 const TOPIC_RESTARTNODE_START = "Vircle.Mnhost.TOPIC.RestartNode.Start"
+const TOPIC_RESTARTNODE_STOP = "Vircle.Mnhost.TOPIC.RestartNode.Stop"
 
 const TOPIC_UPDATENODE_SUCCESS = "Vircle.Mnhost.TOPIC.UpdateNode.Success"
 const TOPIC_UPDATENODE_FAIL = "Vircle.Mnhost.TOPIC.UpdateNode.Fail"
 const TOPIC_UPDATENODE_START = "Vircle.Mnhost.TOPIC.UpdateNode.Start"
+const TOPIC_UPDATENODE_STOP = "Vircle.Mnhost.TOPIC.UpdateNode.Stop"
 
 const SSH_PASSWORD = "vpub$999$000"
 const RPC_USER = "vpub"
@@ -156,6 +164,7 @@ const S_WORKDIR = "vircle"
 const DEVICE_NAME_FROM = "a"
 const DEVICE_NAME_TO = "z"
 const DEVICE_NAME_PREFIX = "xvda"
+const DEVICE_MAX_NUMS = 40
 
 const TEST_VOLUME_SIZE = 1
 
@@ -164,7 +173,7 @@ const NFS_HOST = "172.31.43.253"
 const NFS_PATH = "/mnt/efs"
 const DOCKER_API_VERSION = "1.40"
 const AWS_ACCOUNT = "test-account"
-const SYSTEM_IMAGE = "ami-0cc887bcfcf25bccd" //"ami-0987f4b3af1ef6791" //"ami-05c4f64b6f704720f" // "ami-0815b98db1e19417a" //"ami-0b0426f6bc13cbfe4"
+const SYSTEM_IMAGE = "ami-028afe6935745c8bb" //ami-0cc887bcfcf25bccd" //"ami-0987f4b3af1ef6791" //"ami-05c4f64b6f704720f" // "ami-0815b98db1e19417a" //"ami-0b0426f6bc13cbfe4"
 const ZONE_DEFAULT = "us-east-2"
 const INSTANCE_TYPE_DEFAULT = "t2.small" //"t2.micro"
 const VOLUME_SIZE_DEFAULT = 20

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"strconv"
 	"strings"
 	"sync"
 
@@ -76,6 +77,7 @@ func init() {
 		version = "latest"
 	}
 
+	newVpsFlag = false
 	serviceRetrys = mnhostTypes.RetrysMap{
 		Retrys: make(map[string]*mnhostTypes.RetrysInfo),
 	}
@@ -236,6 +238,11 @@ func (e *Monitor) UpdateService(ctx context.Context, req *monitor.UpdateRequest,
 }
 
 func MonitorVps() {
+	defaultTime, err := strconv.ParseInt(config.GetMyConst("vpsTime"), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	retrys := 0
 	for {
 		startTime := time.Now().Unix()
 
@@ -244,12 +251,12 @@ func MonitorVps() {
 		qs := o.QueryTable("t_vps")
 		nums, err := qs.Filter("clusterName", "cluster1").All(&tvpss)
 		if err != nil {
-			DelayTime(startTime, 20, "monitor vps time")
+			DelayTime(startTime, defaultTime, "monitor vps time")
 			continue
 		}
 
 		if nums == 0 {
-			DelayTime(startTime, 20, "monitor vps time")
+			DelayTime(startTime, defaultTime, "monitor vps time")
 			continue
 		}
 
@@ -289,21 +296,34 @@ func MonitorVps() {
 		if totals > 0 {
 			log.Printf("sysstatus:%d-%d-%f-%f", managers, workers, cpuPercert, memPercert)
 		}
+		log.Printf("###retrys####:%d\n", retrys)
 		if cpuPercert >= 80.0 || memPercert >= 80.0 {
 			if !newVpsFlag {
 				role := mnhostTypes.ROLE_MANAGER
 				if workers >= managers*40 {
 					role = mnhostTypes.ROLE_WORKER
 				}
-				VpsNew(role)
+				if retrys > 10 {
+					retrys = 0
+					log.Printf("****####retrys****:%s-%d\n", role, retrys)
+					VpsNew(role)
+				}
+
 			}
+			retrys++
+		} else {
+			retrys = 0
 		}
 
-		DelayTime(startTime, 20, "monitor vps time")
+		DelayTime(startTime, defaultTime, "monitor vps time")
 	}
 }
 
 func MonitorNode() error {
+	defaultTime, err := strconv.ParseInt(config.GetMyConst("nodeTime"), 10, 64)
+	if err != nil {
+		panic(err)
+	}
 	for {
 		startTime := time.Now().Unix()
 
@@ -312,29 +332,29 @@ func MonitorNode() error {
 		qs := o.QueryTable("t_vps")
 		nums, err := qs.Filter("clusterName", "cluster1").All(&tvpss)
 		if err != nil {
-			DelayTime(startTime, 20, "monitor node time")
+			DelayTime(startTime, defaultTime, "monitor node time")
 			continue
 		}
 
 		if nums == 0 {
-			DelayTime(startTime, 20, "monitor node time")
+			DelayTime(startTime, defaultTime, "monitor node time")
 			continue
 		}
 
 		mpublicIp, mprivateIp, err := common.GetVpsIp("cluster1")
 		if err != nil {
 			SwarmReInit("cluster1")
-			DelayTime(startTime, 20, "monitor node time")
+			DelayTime(startTime, defaultTime, "monitor node time")
 			continue
 		}
 
 		mc, _, err := common.DockerNewClient(mpublicIp, mprivateIp)
 		if err != nil {
-			DelayTime(startTime, 20, "monitor node time")
+			DelayTime(startTime, defaultTime, "monitor node time")
 			continue
 		}
 		if mc == nil {
-			DelayTime(startTime, 20, "monitor node time")
+			DelayTime(startTime, defaultTime, "monitor node time")
 			continue
 		}
 
@@ -342,7 +362,7 @@ func MonitorNode() error {
 		if err != nil {
 			log.Printf("%+v\n", err)
 			SwarmReInit("cluster1")
-			DelayTime(startTime, 20, "monitor node time")
+			DelayTime(startTime, defaultTime, "monitor node time")
 			continue
 		}
 
@@ -423,11 +443,15 @@ func MonitorNode() error {
 			wg.Wait()
 		}
 
-		DelayTime(startTime, 20, "monitor node time")
+		DelayTime(startTime, defaultTime, "monitor node time")
 	}
 }
 
 func MonitorService() {
+	defaultTime, err := strconv.ParseInt(config.GetMyConst("serviceTime"), 10, 64)
+	if err != nil {
+		panic(err)
+	}
 	for {
 		startTime := time.Now().Unix()
 
@@ -436,28 +460,28 @@ func MonitorService() {
 		qs := o.QueryTable("t_node")
 		nums, err := qs.Filter("clusterName", "cluster1").All(&tnodes)
 		if err != nil {
-			DelayTime(startTime, 20, "monitor service time")
+			DelayTime(startTime, defaultTime, "monitor service time")
 			continue
 		}
 
 		if nums == 0 {
-			DelayTime(startTime, 20, "monitor service time")
+			DelayTime(startTime, defaultTime, "monitor service time")
 			continue
 		}
 
 		mpublicIp, mprivateIp, err := common.GetVpsIp("cluster1")
 		if err != nil {
-			DelayTime(startTime, 20, "monitor service time")
+			DelayTime(startTime, defaultTime, "monitor service time")
 			continue
 		}
 
 		mc, _, err := common.DockerNewClient(mpublicIp, mprivateIp)
 		if err != nil {
-			DelayTime(startTime, 20, "monitor service time")
+			DelayTime(startTime, defaultTime, "monitor service time")
 			continue
 		}
 		if mc == nil {
-			DelayTime(startTime, 20, "monitor service time")
+			DelayTime(startTime, defaultTime, "monitor service time")
 			continue
 		}
 		defer mc.Close()
@@ -473,7 +497,7 @@ func MonitorService() {
 					log.Printf("newvps***service:%+v\n", tnode)
 				}
 			} else if tnode.Status == "wait-conf" {
-				common.NodeReadyConfig(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.RpcPort, &wg)
+				common.NodeReadyConfig(tnode.PublicIp, tnode.PrivateIp, tnode.CoinName, tnode.VolumeId, tnode.RpcPort, &wg)
 			} else if tnode.Status == "finish" {
 				ProcessService(tnode.ClusterName, tnode.CoinName, tnode.Status, tnode.PrivateIp, mpublicIp, mprivateIp, tnode.RpcPort, mc, &wg)
 			} else {
@@ -483,11 +507,15 @@ func MonitorService() {
 		}
 		wg.Wait()
 
-		DelayTime(startTime, 20, "monitor service time")
+		DelayTime(startTime, defaultTime, "monitor service time")
 	}
 }
 
 func MonitorApp() {
+	defaultTime, err := strconv.ParseInt(config.GetMyConst("appTime"), 10, 64)
+	if err != nil {
+		panic(err)
+	}
 	for {
 		startTime := time.Now().Unix()
 
@@ -496,18 +524,18 @@ func MonitorApp() {
 		qs := o.QueryTable("t_node")
 		nums, err := qs.Filter("clusterName", "cluster1").All(&tnodes)
 		if err != nil {
-			DelayTime(startTime, 20, "monitor app time")
+			DelayTime(startTime, defaultTime, "monitor app time")
 			continue
 		}
 
 		if nums == 0 {
-			DelayTime(startTime, 20, "monitor app time")
+			DelayTime(startTime, defaultTime, "monitor app time")
 			continue
 		}
 
 		/*mpublicIp, mprivateIp, err := common.GetVpsIp("cluster1")
 		if err != nil {
-			DelayTime(startTime, 20, "monitor app time")
+			DelayTime(startTime, defaultTime, "monitor app time")
 		}*/
 
 		var wg sync.WaitGroup
@@ -531,12 +559,15 @@ func MonitorApp() {
 		}
 		wg.Wait()
 
-		DelayTime(startTime, 20, "monitor app time")
+		DelayTime(startTime, defaultTime, "monitor app time")
 	}
 }
 
 func MonitorVolume() {
-	defaultTime := int64(30)
+	defaultTime, err := strconv.ParseInt(config.GetMyConst("volumeTime"), 10, 64)
+	if err != nil {
+		panic(err)
+	}
 	minSize := int64(1024 * 1024 * 1024)
 	for {
 		startTime := time.Now().Unix()
@@ -599,7 +630,10 @@ func MonitorVolume() {
 }
 
 func MonitorSnapshot() {
-	defaultTime := int64(30)
+	defaultTime, err := strconv.ParseInt(config.GetMyConst("snapshotTime"), 10, 64)
+	if err != nil {
+		panic(err)
+	}
 	for {
 		startTime := time.Now().Unix()
 
@@ -649,8 +683,9 @@ func ProcessNode(nodeInfo *mnhostTypes.NodeInfo, managerPublicIp, managerPrivate
 			err = SwarmReJoin(managerToken, workerToken, nodeInfo.PublicIp, nodeInfo.PrivateIp, managerPrivateIp, nodeInfo.Role, false)
 			if err != nil {
 				log.Printf("get node ip error2:%+v\n", err)
+			} else {
+				log.Printf("success node repaire %s-%s-%s-%s-%s", nodeInfo.PublicIp, nodeInfo.PrivateIp, managerPublicIp, managerPrivateIp, nodeInfo.Role)
 			}
-			log.Printf("success node repaire %s-%s-%s-%s-%s", nodeInfo.PublicIp, nodeInfo.PrivateIp, managerPublicIp, managerPrivateIp, nodeInfo.Role)
 		}
 	}
 	return nil
@@ -702,8 +737,6 @@ func ProcessService(clusterName, coinName, status, privateIp, managerPublicIp, m
 		mutex.Lock()
 		defer mutex.Unlock()
 		o = orm.NewOrm()
-		//tnode.PublicIp = ""
-		//tnode.PrivateIp = ""
 		tnode.State = ""
 		tnode.Status = "wait-conf"
 		_, err = o.Update(&tnode)
@@ -724,12 +757,14 @@ func ProcessService(clusterName, coinName, status, privateIp, managerPublicIp, m
 }
 
 func ProcessApp() error {
-
 	return nil
 }
 
 func ProcessSnapshot(tcoin models.TCoin, wg *sync.WaitGroup) error {
-	defaultTime := int64(240)
+	defaultTime, err := strconv.ParseInt(config.GetMyConst("snapshotTime"), 10, 64)
+	if err != nil {
+		panic(err)
+	}
 	defer func() {
 		wg.Done()
 		err := recover()
@@ -1022,8 +1057,6 @@ func MasterNodeRefused(coinName string, rpcPort int) error {
 	}
 	mutex.Lock()
 	defer mutex.Unlock()
-	//tnode.PublicIp = ""
-	//tnode.PrivateIp = ""
 	tnode.Status = "wait-conf"
 	_, err = o.Update(&tnode)
 	if err != nil {

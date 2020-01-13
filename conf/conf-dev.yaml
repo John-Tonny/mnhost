@@ -79,3 +79,11 @@ RegistryAddrs:
     - 127.0.0.1:8500
 MyConst:
   publicIpEnabled: 1
+  deviceMode: 0
+  vpsTime: 60 
+  nodeTime: 60
+  serviceTime: 60
+  appTime:      60
+  volumeTime:   7200
+  snapshotTime: 7200
+  

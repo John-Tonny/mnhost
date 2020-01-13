@@ -2,7 +2,9 @@ package main
 
 import (
 	//"fmt"
+	"errors"
 	"log"
+	"os"
 	"strconv"
 
 	//"time"
@@ -136,14 +138,41 @@ func main() {
 	//fmt.Println(service1.ID)
 	*/
 
+	args_len := len(os.Args)
+	log.Printf("args len:%d\n", args_len)
+
+	var starts, stops string
+	var start, stop int
+	var err error
+	if args_len == 3 {
+		starts = os.Args[1]
+		stops = os.Args[2]
+		start, err = strconv.Atoi(starts)
+		if err != nil {
+			panic(errors.New("start format err"))
+		}
+		stop, err = strconv.Atoi(stops)
+		if err != nil {
+			panic(errors.New("stop format err"))
+		}
+	} else if args_len == 2 {
+		starts = os.Args[1]
+		start, err = strconv.Atoi(starts)
+		if err != nil {
+			panic(errors.New("start format err"))
+		}
+	} else {
+		panic(errors.New("del node params error"))
+	}
+
 	srv := common.GetMicroClient(service)
 
 	// 创建 user-service 微服务的客户端
 	client1 := pb.NewVpsService(serviceName, srv.Client())
 
-	start := 12
-	stop := 22
-	starts := strconv.Itoa(start)
+	//start := 8
+	//stop := 22
+	//starts := strconv.Itoa(start)
 	resp, err := client1.RemoveNode(context.Background(), &pb.Request{
 		Id: starts,
 	})
@@ -159,13 +188,15 @@ func main() {
 		log.Println(resp)
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(9)
-	for i := start + 1; i <= stop; i++ {
-		id := strconv.Itoa(i)
-		go delnode(id, srv, &wg)
+	if len(stops) > 0 {
+		var wg sync.WaitGroup
+		wg.Add(stop - start)
+		for i := start + 1; i <= stop; i++ {
+			id := strconv.Itoa(i)
+			go delnode(id, srv, &wg)
+		}
+		wg.Wait()
 	}
-	wg.Wait()
 
 }
 
