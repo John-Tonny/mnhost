@@ -14,7 +14,7 @@ const serviceName = "vps"
 func main() {
 	log.Println("vps start")
 
-	//handler.Init("cluster1")
+	handler.Init("cluster1")
 
 	srv := common.GetMicroServer(serviceName)
 

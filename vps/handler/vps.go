@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"log"
 	"strings"
 
@@ -166,7 +167,7 @@ func (e *Vps) RemoveVps(ctx context.Context, req *vps.Request, rsp *vps.Response
 	if err != nil {
 		rsp.Errno = utils.RECODE_DBERR
 		rsp.Errmsg = utils.RecodeText(rsp.Errno)
-		return nil
+		return err
 	}
 
 	go e.processRemoveVps(req.Id)
@@ -185,7 +186,7 @@ func (e *Vps) CreateNode(ctx context.Context, req *vps.Request, rsp *vps.Respons
 	if err != nil {
 		rsp.Errno = utils.RECODE_DATAERR
 		rsp.Errmsg = utils.RecodeText(rsp.Errno)
-		return nil
+		return err
 	}
 
 	var torder models.TOrder
@@ -195,7 +196,7 @@ func (e *Vps) CreateNode(ctx context.Context, req *vps.Request, rsp *vps.Respons
 	if err != nil {
 		rsp.Errno = utils.RECODE_DBERR
 		rsp.Errmsg = utils.RecodeText(rsp.Errno)
-		return nil
+		return err
 	}
 
 	userId := strconv.FormatInt(torder.Userid, 10)
@@ -206,6 +207,7 @@ func (e *Vps) CreateNode(ctx context.Context, req *vps.Request, rsp *vps.Respons
 	err = qs.Filter("name", torder.Coinname).Filter("status", "Enabled").One(&tcoin)
 	if err != nil {
 		e.pubErrMsg(userId, "newnode", utils.RECODE_NODATA, err.Error(), mnhostTypes.TOPIC_NEWNODE_FAIL)
+		e.pubLog(userId, "newnode", err.Error())
 		return err
 	}
 
@@ -291,7 +293,7 @@ func (e *Vps) ExpandVolume(ctx context.Context, req *vps.VolumeRequest, rsp *vps
 	if size == 0 {
 		rsp.Errno = utils.RECODE_DATAERR
 		rsp.Errmsg = utils.RecodeText(rsp.Errno)
-		return nil
+		return errors.New("no data")
 	}
 
 	go e.processExpandVolume("", volumeId, size, tvps.PublicIp, tvps.PrivateIp, mnhostTypes.SSH_PASSWORD)
@@ -321,7 +323,7 @@ func (e *Vps) GetAllVps(ctx context.Context, req *vps.Request, rsp *vps.VpsRespo
 	if nums == 0 {
 		rsp.Errno = utils.RECODE_NODATA
 		rsp.Errmsg = utils.RecodeText(rsp.Errno)
-		return nil
+		return errors.New("no data")
 	}
 
 	pbVpss := make([]*vps.MVps, len(tvpss))
@@ -355,7 +357,7 @@ func (e *Vps) GetAllNodeFromUser(ctx context.Context, req *vps.Request, rsp *vps
 	if nums == 0 {
 		rsp.Errno = utils.RECODE_NODATA
 		rsp.Errmsg = utils.RecodeText(rsp.Errno)
-		return nil
+		return errors.New("no data")
 	}
 
 	pbNodes := make([]*vps.Node, len(tnodes))
@@ -382,38 +384,43 @@ func (e *Vps) processCreateVps(clusterName, role string, volumeSize int64) error
 	vpsInfo, errcode, err := NewVps(mnhostTypes.SYSTEM_IMAGE, mnhostTypes.ZONE_DEFAULT, mnhostTypes.INSTANCE_TYPE_DEFAULT, clusterName, role, volumeSize, bAllocation, bVolume)
 	if err != nil {
 		e.pubErrMsg("", "newvps", errcode, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
-		return nil
+		e.pubLog("", "newvps", err.Error())
+		return err
 	}
 
 	/*err = common.EfsMount(vpsInfo.PublicIp, vpsInfo.PrivateIp, mnhostTypes.SSH_PASSWORD)
 	if err != nil {
 		e.pubErrMsg("", "newvps", utils.EFS_MOUNT_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
-		return nil
+		return err
 	}*/
 
 	if (role == mnhostTypes.ROLE_MANAGER) || (role == mnhostTypes.ROLE_WORKER) {
 		publicIp, privateIp, err := common.GetVpsIp("cluster1")
 		if err != nil {
 			e.pubErrMsg("", "newvps", utils.MANAGER_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
-			return nil
+			e.pubLog("", "newvps", err.Error())
+			return err
 		}
 
 		mc, _, err := common.DockerNewClient(publicIp, privateIp)
 		if err != nil {
 			e.pubErrMsg("", "newvps", utils.DOCKER_CONNECT_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
-			return nil
+			e.pubLog("", "newvps", err.Error())
+			return err
 		}
 		defer mc.Close()
 
 		managerToken, workerToken, err := mc.SwarmInspectA()
 		if err != nil {
 			e.pubErrMsg("", "newvps", utils.SWARM_INSPECT_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
-			return nil
+			e.pubLog("", "newvps", err.Error())
+			return err
 		} else {
 			c, _, err := common.DockerNewClient(vpsInfo.PublicIp, vpsInfo.PrivateIp)
 			if err != nil {
 				e.pubErrMsg("", "newvps", utils.DOCKER_CONNECT_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
-				return nil
+				e.pubLog("", "newvps", err.Error())
+				return err
 			}
 			defer c.Close()
 
@@ -426,7 +433,8 @@ func (e *Vps) processCreateVps(clusterName, role string, volumeSize int64) error
 			err = c.SwarmJoinA(vpsInfo.PrivateIp, privateIp, token)
 			if err != nil {
 				e.pubErrMsg("", "newvps", utils.SWARM_INIT_ERR, err.Error(), mnhostTypes.TOPIC_NEWVPS_FAIL)
-				return nil
+				e.pubLog("", "newvps", err.Error())
+				return err
 			}
 
 			var tvps models.TVps
@@ -435,19 +443,23 @@ func (e *Vps) processCreateVps(clusterName, role string, volumeSize int64) error
 			err = qs.Filter("instanceId", vpsInfo.InstanceId).One(&tvps)
 			if err != nil {
 				e.pubErrMsg("", "newvps", utils.RECODE_DATAERR, err.Error(), mnhostTypes.TOPIC_DELVPS_FAIL)
-				return nil
+				e.pubLog("", "newvps", err.Error())
+				return err
 			}
 
 			o = orm.NewOrm()
 			tvps.Status = status
 			_, err = o.Update(&tvps)
 			if err != nil {
-				return nil
+				e.pubErrMsg("", "newvps", utils.RECODE_UPDATEERR, err.Error(), mnhostTypes.TOPIC_DELVPS_FAIL)
+				e.pubLog("", "newvps", err.Error())
+				return err
 			}
 		}
 	}
 
 	e.pubMsg("", mnhostTypes.TOPIC_NEWVPS_SUCCESS, vpsInfo.InstanceId)
+	e.pubLog("", "newvps", vpsInfo.InstanceId)
 	log.Printf("success process create Vps from cluster:%s, role:%s, size:%d\n", clusterName, role, volumeSize)
 	return nil
 }
@@ -461,16 +473,17 @@ func (e *Vps) processRemoveVps(instanceId string) error {
 	err := qs.Filter("instanceId", instanceId).One(&tvps)
 	if err != nil {
 		e.pubErrMsg("", "delvps", utils.RECODE_DATAERR, err.Error(), mnhostTypes.TOPIC_DELVPS_FAIL)
-		return nil
+		return err
 	}
 
 	errcode, err := DelVps("", instanceId)
 	if err != nil {
 		e.pubErrMsg("", "delvps", errcode, err.Error(), mnhostTypes.TOPIC_DELVPS_FAIL)
-		return nil
+		return err
 	}
 
 	e.pubMsg("", mnhostTypes.TOPIC_DELVPS_SUCCESS, instanceId)
+	e.pubLog("", "removevps", instanceId)
 	log.Printf("success process remove Vps from instanceId:%s\n", instanceId)
 	return nil
 }
@@ -505,6 +518,7 @@ func (e *Vps) processCreateNode(orderId int64, clusterName string) error {
 	}
 
 	e.pubMsg(userId, mnhostTypes.TOPIC_NEWNODE_SUCCESS, strconv.FormatInt(orderId, 10))
+	e.pubLog("", "newnode", strconv.FormatInt(orderId, 10))
 	log.Printf("success process create node %v\n", orderId)
 	return nil
 }
@@ -532,6 +546,7 @@ func (e *Vps) processRemoveNode(nodeId int64, clusterName string) error {
 	}
 
 	e.pubMsg(userId, mnhostTypes.TOPIC_DELNODE_SUCCESS, strconv.FormatInt(nodeId, 10))
+	e.pubLog("", "removenode", strconv.FormatInt(nodeId, 10))
 	log.Printf("success process remove node from %v\n", nodeId)
 
 	return nil
@@ -560,6 +575,7 @@ func (e *Vps) processUpdateNode(nodeId int64, clusterName string) error {
 	}
 
 	e.pubMsg(userId, mnhostTypes.TOPIC_UPDATENODE_SUCCESS, strconv.FormatInt(nodeId, 10))
+	e.pubLog("", "updatenode", strconv.FormatInt(nodeId, 10))
 	log.Printf("success process update node from %v\n", nodeId)
 
 	return nil
@@ -577,7 +593,7 @@ func (e *Vps) processExpandVolume(userId, volumeId string, size int64, publicIp,
 	result, err := c.GetDescribeVolumes([]string{volumeId})
 	if err != nil {
 		e.pubErrMsg(userId, "expandvolume", utils.DESC_VOLUME_ERR, err.Error(), mnhostTypes.TOPIC_EXPANDVOLUME_FAIL)
-		return err
+		return errors.New("no desc volume")
 	}
 	if result == nil {
 		e.pubErrMsg(userId, "expandvolume", utils.RECORD_SYSTEMERR, err.Error(), mnhostTypes.TOPIC_EXPANDVOLUME_FAIL)

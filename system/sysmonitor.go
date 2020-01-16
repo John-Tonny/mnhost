@@ -121,6 +121,7 @@ const (
 	RPC_USER     = "vpub"
 	RPC_PASSWORD = "vpub999000"
 	NFS_HOST     = "172.31.43.253:/"
+	UUID_ENABLED = 0
 )
 
 var (
@@ -361,7 +362,7 @@ func (this *UmountEbsController) Post() {
 				"400",
 				"解绑ebs参数错误"}
 		} else {
-			err := UmountEbs(params.Name, true)
+			err := UmountEbs(params.Name, true, true)
 			if err != nil {
 				data = &RespInfo{
 					"401",
@@ -479,12 +480,6 @@ func MountEfs() error {
 
 func MountEbs(deviceName, nodeName, volumeId string) error {
 	mpath := fmt.Sprintf("%s/%s", MOUNT_PATH, nodeName)
-	err := os.MkdirAll(mpath, os.ModePerm)
-	if err != nil {
-		fmt.Printf("fail mount %s-%s\n", deviceName, nodeName)
-		return err
-	}
-
 	if !g_devMode {
 		deviceName = fmt.Sprintf("/dev/%s%d", deviceName, 1)
 	} else {
@@ -506,11 +501,22 @@ func MountEbs(deviceName, nodeName, volumeId string) error {
 		}
 
 		if bFind {
-			err = UmountEbs(path.Base(result), false)
+			err = UmountEbs(result, true, false)
 			if err != nil {
 				fmt.Printf("fail mount %s-%s\n", deviceName, nodeName)
 				return err
 			}
+		}
+
+		err = os.MkdirAll(mpath, os.ModePerm)
+		if err != nil {
+			fmt.Printf("fail mount %s-%s\n", deviceName, nodeName)
+			return err
+		}
+
+		fmt.Printf("mount path:%s-%s\n", deviceName, mpath)
+		if mpath == "/mnt/vircle" {
+			panic(errors.New("error mount"))
 		}
 		cmd = exec.Command("mount", deviceName, mpath)
 		_, err = cmd.CombinedOutput()
@@ -561,8 +567,11 @@ func ModifyEbs(deviceName, volumeId string) error {
 	return nil
 }
 
-func UmountEbs(nodeName string, bDel bool) error {
-	mpath := fmt.Sprintf("%s/%s", MOUNT_PATH, nodeName)
+func UmountEbs(nodeName string, bDel, bSimple bool) error {
+	mpath := nodeName
+	if bSimple {
+		mpath = fmt.Sprintf("%s/%s", MOUNT_PATH, nodeName)
+	}
 	defer func() {
 		if bDel {
 			os.RemoveAll(mpath)
@@ -576,17 +585,29 @@ func UmountEbs(nodeName string, bDel bool) error {
 	}
 
 	if bDel {
-		_, uuid, err := GetVolumeUUID(deviceName)
-		if err != nil {
-			return err
-		}
+		if UUID_ENABLED == 1 {
+			_, uuid, err := GetVolumeUUID(deviceName)
+			if err != nil {
+				return err
+			}
 
-		//删除匹配行
-		info := fmt.Sprintf("/^UUID=%s/d", uuid)
-		cmd = exec.Command("sed", "-i", info, "/etc/fstab")
-		_, err = cmd.CombinedOutput()
-		if err != nil {
-			return err
+			//删除匹配行
+			info := fmt.Sprintf("/^UUID=%s/d", uuid)
+			cmd = exec.Command("sed", "-i", info, "/etc/fstab")
+			_, err = cmd.CombinedOutput()
+			if err != nil {
+				return err
+			}
+		} else {
+			//删除匹配行
+			deviceNames := strings.Split(deviceName, "/")
+			devName := deviceNames[len(deviceNames)-1]
+			info := fmt.Sprintf("/%s/d", devName)
+			cmd = exec.Command("sed", "-i", info, "/etc/fstab")
+			_, err = cmd.CombinedOutput()
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -628,39 +649,89 @@ func WriteFstab(deviceName, nodeName, volumeId string) error {
 	mpath := fmt.Sprintf("%s/%s", MOUNT_PATH, nodeName)
 	fmt.Printf("write fstab:%s-%s\n", deviceName, mpath)
 
-	bFind, uuid, err := GetVolumeUUID(deviceName)
-	if err != nil {
-		return err
-	}
+	if UUID_ENABLED == 1 {
+		bFind, uuid, err := GetVolumeUUID(deviceName)
+		if err != nil {
+			return err
+		}
 
-	if bFind && len(uuid) > 0 {
+		if bFind && len(uuid) > 0 {
+			err := fileutils.CopyFile("/etc/fstab", "/etc/fstab.orig")
+			if err != nil {
+				return err
+			}
+
+			//删除匹配行
+			info := fmt.Sprintf("/^UUID=%s/d", uuid)
+			cmd := exec.Command("sed", "-i", info, "/etc/fstab")
+			_, err = cmd.CombinedOutput()
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("uuid:%s-%s\n", uuid, mpath)
+
+			//增加新行
+			info = fmt.Sprintf("$a\\UUID=%s %s ext4 defaults,nofail 0 0", uuid, mpath)
+			cmd = exec.Command("sed", "-i", info, "/etc/fstab")
+			_, err = cmd.CombinedOutput()
+			if err != nil {
+				return err
+			}
+
+			//卸载
+			err = UmountEbs(nodeName, false, true)
+			if err != nil {
+				return err
+			}
+
+			//绑定
+			cmd = exec.Command("mount", "-a")
+			_, err = cmd.CombinedOutput()
+			if err != nil {
+				//还原
+				err = fileutils.CopyFile("/etc/fstab.orig", "/etc/fstab")
+				if err != nil {
+					return err
+				}
+				return errors.New("mount error")
+			}
+
+			cmd = exec.Command("df", "-h")
+			_, _, err = findInfo(cmd, -1, -1, mpath, deviceName)
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+		return errors.New("no found")
+	} else {
 		err := fileutils.CopyFile("/etc/fstab", "/etc/fstab.orig")
 		if err != nil {
 			return err
 		}
 
 		//删除匹配行
-		info := fmt.Sprintf("/^UUID=%s/d", uuid)
+		deviceNames := strings.Split(deviceName, "/")
+		devName := deviceNames[len(deviceNames)-1]
+		info := fmt.Sprintf("/%s/d", devName)
+		fmt.Printf("****:%s\n", info)
 		cmd := exec.Command("sed", "-i", info, "/etc/fstab")
 		_, err = cmd.CombinedOutput()
 		if err != nil {
-			fmt.Printf("err1:%+v\n", err)
 			return err
 		}
 
-		fmt.Printf("uuid:%s-%s\n", uuid, mpath)
-
 		//增加新行
-		info = fmt.Sprintf("$a\\UUID=%s %s ext4 defaults,nofail 0 0", uuid, mpath)
+		info = fmt.Sprintf("$a/dev/%s %s ext4 defaults,nofail 0 0", devName, mpath)
 		cmd = exec.Command("sed", "-i", info, "/etc/fstab")
 		_, err = cmd.CombinedOutput()
 		if err != nil {
-			fmt.Println(err)
 			return err
 		}
 
 		//卸载
-		err = UmountEbs(nodeName, false)
+		err = UmountEbs(nodeName, false, true)
 		if err != nil {
 			return err
 		}
@@ -672,15 +743,20 @@ func WriteFstab(deviceName, nodeName, volumeId string) error {
 			//还原
 			err = fileutils.CopyFile("/etc/fstab.orig", "/etc/fstab")
 			if err != nil {
+				fmt.Printf("err4:%+v\n", err)
 				return err
 			}
 			return errors.New("mount error")
 		}
+
+		cmd = exec.Command("df", "-h")
+		bFind, _, err := findInfo(cmd, -1, -1, mpath, deviceName)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("*****:%+v-%s-%s\n", bFind, mpath, deviceName)
 		return nil
-
 	}
-
-	return errors.New("no found")
 }
 
 func readByLine(filename string) (lines [][]byte, err error) {
@@ -754,6 +830,16 @@ func GetVolumeUUID(deviceName string) (bool, string, error) {
 }
 
 func main() {
+	/*err := MountEbs("sdb", "dash11000", "333")
+	if err != nil {
+		panic(err)
+	}*/
+
+	/*err1 := UmountEbs("dash11000", true)
+	if err1 != nil {
+		panic(err1)
+	}*/
+
 	g_devMode = GetDevMode()
 	fmt.Printf("devMode:%t\n", g_devMode)
 	beego.BConfig.CopyRequestBody = true

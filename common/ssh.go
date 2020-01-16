@@ -150,7 +150,7 @@ func NodeReadyData(publicIp, privateIp, coinName string, rpcPort int, wg *sync.W
 		}
 	}()
 
-	log.Printf("start ready data %s%d-%s\n", coinName, rpcPort, publicIp)
+	log.Printf("start ready data %s-%s\n", coinName, publicIp)
 
 	var tcoin models.TCoin
 	o := orm.NewOrm()
@@ -234,7 +234,7 @@ func NodeReadyData(publicIp, privateIp, coinName string, rpcPort int, wg *sync.W
 		panic(err)
 	}
 
-	log.Printf("success ready data %s%d\n", coinName, rpcPort)
+	log.Printf("success ready data %s%d\n", coinName, rpcport)
 	return nil
 }
 
@@ -396,7 +396,6 @@ func NodeReadyConfig(publicIp, privateIp, coinName, volumeId string, rpcPort int
 	log.Printf("ready config :%s-%s\n", nodeName, deviceName)
 	err = EbsMount(tnode.PublicIp, tnode.PrivateIp, deviceName, nodeName, volumeId)
 	if err != nil {
-		log.Printf("ready config error3:%s-%+v\n", tnode.PublicIp, err)
 		panic(err)
 	}
 

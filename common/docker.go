@@ -292,7 +292,6 @@ func GetVpsIp(clusterName string) (string, string, error) {
 				privateIp = strings.Split(node.ManagerStatus.Addr, ":")[0]
 				err = UpdateVpsLeader("cluster1", privateIp)
 				if err != nil {
-					log.Printf("aaaaa:%+v\n", err)
 					continue
 				}
 				publicIp, _, _, err = GetPublicIpFromVps(privateIp)

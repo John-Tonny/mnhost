@@ -296,17 +296,16 @@ func MonitorVps() {
 		if totals > 0 {
 			log.Printf("sysstatus:%d-%d-%f-%f", managers, workers, cpuPercert, memPercert)
 		}
-		log.Printf("###retrys####:%d\n", retrys)
-		if cpuPercert >= 80.0 || memPercert >= 80.0 {
+		if cpuPercert >= 70.0 || memPercert >= 70.0 {
 			if !newVpsFlag {
 				role := mnhostTypes.ROLE_MANAGER
-				if workers >= managers*40 {
+				if workers <= managers*40 {
 					role = mnhostTypes.ROLE_WORKER
 				}
 				if retrys > 10 {
-					retrys = 0
-					log.Printf("****####retrys****:%s-%d\n", role, retrys)
+					log.Printf("####retrys####:%s-%d\n", role, retrys)
 					VpsNew(role)
+					retrys = 0
 				}
 
 			}
@@ -360,7 +359,6 @@ func MonitorNode() error {
 
 		nodes, err := mc.NodeListA(types.NodeListOptions{})
 		if err != nil {
-			log.Printf("%+v\n", err)
 			SwarmReInit("cluster1")
 			DelayTime(startTime, defaultTime, "monitor node time")
 			continue
@@ -371,11 +369,10 @@ func MonitorNode() error {
 			Node: make(map[string]*mnhostTypes.NodeInfo),
 		}
 		for _, node := range nodes {
-			//log.Printf("nodes:%+v\n", node)
-			if node.Spec.Role == "manager" {
+			if node.Spec.Role == mnhostTypes.ROLE_MANAGER {
 				if node.ManagerStatus != nil && node.ManagerStatus.Leader == true {
 					leaderPrivateIp = strings.Split(node.ManagerStatus.Addr, ":")[0]
-					//log.Printf("leaderIp:%s\n", leaderPrivateIp)
+					log.Printf("leaderIp:%s\n", leaderPrivateIp)
 					err = common.UpdateVpsLeader("cluster1", leaderPrivateIp)
 					if err != nil {
 						continue
@@ -394,7 +391,7 @@ func MonitorNode() error {
 			allnodes.Node[privateIp].Role = role
 
 			bReady := false
-			if role == "manager" {
+			if role == mnhostTypes.ROLE_MANAGER {
 				if node.ManagerStatus != nil {
 					if node.Status.State == "ready" || node.ManagerStatus.Reachability == "Reachable" {
 						bReady = true
@@ -408,20 +405,20 @@ func MonitorNode() error {
 
 			if bReady {
 				allnodes.Node[privateIp].Status = true
-			} else {
+			} /*else {
 				var tvps models.TVps
 				o := orm.NewOrm()
 				qs := o.QueryTable("t_vps")
 				err := qs.Filter("privateIp", privateIp).One(&tvps)
 				if err != nil {
-					return err
+					continue
 				}
 				allnodes.Node[privateIp].PublicIp = tvps.PublicIp
-			}
+			}*/
 		}
 
 		for _, tvps := range tvpss {
-			if !vpsExist(tvps.PrivateIp, nodes) {
+			if vpsExist(tvps.PrivateIp, nodes) {
 				_, ok := allnodes.Node[tvps.PrivateIp]
 				if !ok {
 					allnodes.Node[tvps.PrivateIp] = &mnhostTypes.NodeInfo{}
@@ -429,8 +426,17 @@ func MonitorNode() error {
 				allnodes.Node[tvps.PrivateIp].PrivateIp = tvps.PrivateIp
 				allnodes.Node[tvps.PrivateIp].PublicIp = tvps.PublicIp
 				allnodes.Node[tvps.PrivateIp].Role = tvps.VpsRole
-				allnodes.Node[tvps.PrivateIp].Status = false
-				//log.Printf("%+v\n", allnodes.Node[tvps.PrivateIp])
+			} else {
+				if tvps.VpsRole == mnhostTypes.ROLE_MANAGER {
+					_, ok := allnodes.Node[tvps.PrivateIp]
+					if !ok {
+						allnodes.Node[tvps.PrivateIp] = &mnhostTypes.NodeInfo{}
+					}
+					allnodes.Node[tvps.PrivateIp].PrivateIp = tvps.PrivateIp
+					allnodes.Node[tvps.PrivateIp].PublicIp = tvps.PublicIp
+					allnodes.Node[tvps.PrivateIp].Role = tvps.VpsRole
+					allnodes.Node[tvps.PrivateIp].Status = false
+				}
 			}
 		}
 
@@ -507,7 +513,10 @@ func MonitorService() {
 		}
 		wg.Wait()
 
-		DelayTime(startTime, defaultTime, "monitor service time")
+		totalTime := time.Now().Unix() - startTime
+		log.Printf("%s:%d\n", "monitor service time", totalTime)
+		time.Sleep(time.Second * time.Duration(defaultTime))
+		//DelayTime(startTime, defaultTime, "monitor service time")
 	}
 }
 
@@ -568,7 +577,10 @@ func MonitorVolume() {
 	if err != nil {
 		panic(err)
 	}
-	minSize := int64(1024 * 1024 * 1024)
+	minSize, err := strconv.ParseInt(config.GetMyConst("volumeModifySize"), 10, 64)
+	if err != nil {
+		panic(err)
+	}
 	for {
 		startTime := time.Now().Unix()
 
@@ -671,7 +683,7 @@ func ProcessNode(nodeInfo *mnhostTypes.NodeInfo, managerPublicIp, managerPrivate
 		}
 	}()
 
-	if !nodeInfo.Status {
+	if !nodeInfo.Status && len(nodeInfo.PublicIp) > 0 {
 		log.Printf("start node repaire %s-%s-%s-%s-%s", nodeInfo.PublicIp, nodeInfo.PrivateIp, managerPublicIp, managerPrivateIp, nodeInfo.Role)
 		if mc == nil {
 			panic(errors.New("no client mc"))
@@ -955,6 +967,8 @@ func SwarmReInit(clusterName string) error {
 		return errors.New("ip error")
 	}
 	defer mc.Close()
+
+	mc.SwarmLeave(context.Background(), true)
 
 	_, err = mc.SwarmInitA(tvps.PublicIp, tvps.PrivateIp, true)
 	if err != nil {
